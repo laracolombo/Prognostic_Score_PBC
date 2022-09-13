@@ -1,0 +1,4499 @@
+---
+title: "Biostatistics project"
+authors: "Lara Colombo, Erik Bot, Michele Rossi, Sabrina Sartori"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# PREPROCESSING OF THE DATA
+
+## To remove every object saved in your R environment
+
+```{r}
+rm(list = ls())
+```
+
+## Retrieving the dataset from the 'survival' library
+
+```{r}
+library(survival)
+library(tibble)
+pbc <-as.tibble(survival::pbc)
+```
+
+The file has numerous missing values in the same patients id, so we kept only the first 312 rows
+
+```{r}
+pbc <- pbc[1:312,]
+
+pbc$id <- seq(1,312)
+
+pbc$status[which(pbc$status == 2)] <- 1
+
+view(pbc)
+
+str(pbc)
+```
+
+Note: the trt variable is defined as: 1 drug, 2 placebo. We defined it  as 1 drug, 0 placebo.
+
+```{r}
+pbc$trt[which(pbc$trt == 2)] <- 0
+```
+
+## Reformatting the 'edema' variable
+
+The `edema` variable is defined as: 
+- 0 = no edema and no diuretic therapy for edema
+- 0.5 = edema present without diuretics, or edema resolved by diuretics
+- 1 = edema despite diuretic therapy.
+
+The fact that `edema` encodes for two different kind of information may be confusing for the subsequent analysis, so we divide it in two different variables:
+- `edema` : 0 = edema not present; 1 = edema present
+- `diuretic` : 0 = no diuretic therapy; 1 = patient under diuretic therapy
+
+```{r}
+pbc["diuretic"] <- NA # new variable
+
+# cases edema = 0 and edema = 1
+pbc$diuretic[which(pbc$edema == 0)] <- 0
+pbc$diuretic[which(pbc$edema == 1)] <- 1
+
+# case edema 0.5. we have only the case "edema, no diuretic therapy"
+pbc$diuretic[which(pbc$edema == 0.5)] <- 0
+pbc$edema[which(pbc$edema == 0.5)] <- 1
+```
+
+## Missing values
+
+The next variables have some missing values left:
+
+Serum cholesterol: 28 missing values, 284 values left;
+Copper: 2 missing values, 310 values left;
+Triglycerides: 30 missing values, 282 values left;
+Platelet: 4 missing values, 308 values left.
+
+This is the code to be used to avoid missing values in the analysis:
+
+```{r}
+# Serum cholesterol
+
+pbc$chol[which(is.na(pbc$chol) == FALSE)]
+
+# Copper
+
+pbc$copper[which(is.na(pbc$copper) == FALSE)]
+
+# Triglycerides
+
+pbc$trig[which(is.na(pbc$trig) == FALSE)]
+
+#Platelet
+
+pbc$platelet[which(is.na(pbc$platelet) == FALSE)]
+
+```
+
+## Categorical variables
+
+We can divide our dataset into different categories, based on the variables that we have (excluding those that can be used for the survival analysis):
+
+1. males and females (pbc$sex: m and f);
+
+2. no edema, or edema (pbc$edema: 0, 1);
+
+3. patient not under diuretic therapy, or under diuretic therapy (pbc$diuretic: 0, 1);
+
+4. spiders or not spiders (blood vessel malformations) (pbc$spiders: 1, 0);
+
+5. hepatomegaly or not (pbs$hepato: 1, 0);
+
+6. ascites or not (pbc$ascites: 1, 0);
+
+7. treatment or placebo (pbc$trt: 1, 0). Note: removing the lines next than 312, we remove all the patients that were not randomized (which were represented by missing values). I don't think these is a problem, given that those not randomized had not many other variables values.
+
+These variables can be converted into factors:
+
+```{r}
+
+pbc$ascites <- as.factor(pbc$ascites)
+
+pbc$edema <- as.factor(pbc$edema)
+
+pbc$diuretic <- as.factor(pbc$diuretic)
+
+pbc$hepato <- as.factor(pbc$hepato)
+
+pbc$spiders <- as.factor(pbc$spiders)
+
+pbc$trt <- as.factor(pbc$trt)
+```
+
+## Numerical variables
+
+We have this numerical variables (excluding those that can be used for the survival analysis):
+
+1. age (years) (pbc$age);
+
+2. bilirubin (mg/dl) (pbc$bili);
+
+3. serum cholesterol (mg/dl) (pbc$chol);
+
+4. albumin (g/dl) (pbc$albumin);
+
+5. copper (ug/day) (pbc$copper);
+
+6. alkaline phosphotase (U/l) (pbc$alk.phos);
+
+7. aspartate aminotransferase, once called SGOT (U/ml) (pbc$ast);
+
+8. standardize prothrombin time (seconds) (pbc$protime);
+
+9. triglycerides (mg/dl) (pbc$trig)
+
+## Survival variables
+
+These are the variables that are useful for the survival analysis (as far as I have understood):
+
+1. status (censored, transplant, dead) (pbc$status: 0, 1, 2);
+
+2. stage (pbc$stage);
+
+3. time from enrollment and transplant or death (days) (pbc$time).
+
+I guess that status and stage have to be converted into factors as well:
+
+```{r}
+pbc$status <- as.factor(pbc$status)
+
+pbc$stage <- as.factor(pbc$stage)
+```
+
+## Final look at the dataset
+
+This is the final (kind of) look at the dataset after the modifications:
+
+```{r}
+view(pbc)
+
+str(pbc)
+
+dim(pbc)
+```
+
+## Attaching the dataset
+
+```{r}
+attach(pbc)
+```
+
+# Exploring possible relations among the variables
+
+## Subdivision into the different categories
+
+1. Sex
+```{r}
+length(pbc[which(sex == 'f'),]$sex) # 276 females
+length(pbc[which(sex == 'm'),]$sex) # 36 males
+```
+2. Edema
+
+```{r}
+length(pbc[which(edema == 0),]$edema) # 263 without
+length(pbc[which(edema == 1),]$edema) # 49 with
+```
+3. Diuretic
+
+```{r}
+length(pbc[which(diuretic == 0),]$diuretic) # 292 not under diuretic therapy
+length(pbc[which(diuretic == 1),]$diuretic) # 20 under diuretic therapy
+```
+4. Ascites
+
+```{r}
+length(pbc[which(ascites == 0),]$ascites) # 288 without
+length(pbc[which(ascites == 1),]$ascites) # 24 with
+```
+5. Hepatomegaly
+
+```{r}
+length(pbc[which(hepato == 0),]$hepato) # 152 without
+length(pbc[which(hepato == 1),]$hepato) # 160 with
+```
+
+6. Spiders
+
+```{r}
+length(pbc[which(spiders == 0),]$spiders) # 222 without
+length(pbc[which(spiders == 1),]$spiders) # 90 with
+```
+7. Treatment
+
+```{r}
+length(pbc[which(trt == 0),]$trt) # 154 placebo
+length(pbc[which(trt == 1),]$trt) # 158 treated
+```
+8. Status
+
+```{r}
+length(pbc[which(status == 0),]$status) # 169 censored
+length(pbc[which(status == 1),]$status) # 19 transplanted
+length(pbc[which(status == 2),]$status) # 125 dead
+```
+9. Stage
+
+```{r}
+length(pbc[which(stage == 1),]$stage) # 16 stage 1
+length(pbc[which(stage == 2),]$stage) # 67 stage 2
+length(pbc[which(stage == 3),]$stage) # 120 stage 3
+length(pbc[which(stage == 4),]$stage) # 109 stage 4
+```
+
+## Subdivision into different datasets, based on the categories
+
+1. Sex
+```{r}
+females <- pbc[which(sex == 'f'),] 
+
+males <- pbc[which(sex == 'm'),]
+```
+
+2. Edema
+
+```{r}
+edema_no <- pbc[which(edema == 0),] 
+
+edema_yes <- pbc[which(edema == 1),] 
+```
+
+3. Diuretic
+
+```{r}
+diuretic_no <- pbc[which(diuretic == 0),] 
+
+diuretic_yes <- pbc[which(diuretic == 1),] 
+```
+
+4. Ascites
+
+```{r}
+ascites_no <- pbc[which(ascites == 0),]
+
+ascites_yes <- pbc[which(ascites == 1),]
+```
+
+5. Hepatomegaly
+
+```{r}
+hepatomegaly_no <- pbc[which(hepato == 0),]
+       
+hepatomegaly_yes <- pbc[which(hepato == 1),]
+```
+
+6. Spiders
+
+```{r}
+spiders_no <- pbc[which(spiders == 0),]
+       
+spiders_yes <- pbc[which(spiders == 1),]
+```
+
+7. Treatment
+
+```{r}
+placebo <- pbc[which(trt == 0),]
+
+treated <- pbc[which(trt == 1),]
+```
+
+8. Status
+
+```{r}
+censored <- pbc[which(status == 0),]
+
+transplanted <- pbc[which(status == 1),]
+
+dead <- pbc[which(status == 2),]
+```
+
+9. Stage
+
+```{r}
+stage1 <- pbc[which(stage == 1),]
+                     
+stage2 <- pbc[which(stage == 2),]
+                     
+stage3 <- pbc[which(stage == 3),]
+                     
+stage4 <- pbc[which(stage == 4),]
+```
+
+## Pie charts
+
+```{r}
+library(ggplot2)
+library(scales)
+```
+ 
+1. Sex
+
+```{r}
+df <- data.frame(value = c(length(females$sex), length(males$sex)), group = c('Females', 'Males'))
+
+pie_sex <- ggplot(df, aes(x = '', y = value, fill = group)) + geom_col(color = 'black') + coord_polar(theta = 'y') + geom_label(aes(label = value), position = position_stack(vjust = 0.5), show.legend = FALSE) + scale_fill_manual(values = c('skyblue1', 'skyblue4')) + theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), panel.background = element_rect(fill = '#ebf2ff'), plot.background = element_rect(fill = '#ebf2ff'), legend.background = element_rect(fill = '#ebf2ff'))
+
+pie_sex
+```
+
+2. Edema
+
+```{r}
+df <- data.frame(value = c(length(edema_no$sex), length(edema_yes$sex)), group = c('Without edema', 'With edema'))
+
+pie_edema <- ggplot(df, aes(x = '', y = value, fill = group)) + geom_col(color = 'black') + coord_polar(theta = 'y') + geom_label(aes(label = value), position = position_stack(vjust = 0.5), show.legend = FALSE) + scale_fill_manual(values = c('skyblue4', 'skyblue1')) + theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), panel.background = element_rect(fill = '#ebf2ff'), plot.background = element_rect(fill = '#ebf2ff'), legend.background = element_rect(fill = '#ebf2ff'))
+
+pie_edema
+```
+
+3. Diuretic
+
+```{r}
+df <- data.frame(value = c(length(diuretic_no$sex), length(diuretic_yes$sex)), group = c('No diuretic therapy', 'Diuretic therapy'))
+
+pie_diuretic <- ggplot(df, aes(x = '', y = value, fill = group)) + geom_col(color = 'black') + coord_polar(theta = 'y') + geom_label(aes(label = value), position = position_stack(vjust = 0.5), show.legend = FALSE) + scale_fill_manual(values = c('skyblue4', 'skyblue1')) + theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), panel.background = element_rect(fill = '#ebf2ff'), plot.background = element_rect(fill = '#ebf2ff'), legend.background = element_rect(fill = '#ebf2ff'))
+
+pie_diuretic
+```
+
+4. Ascites
+
+```{r}
+df <- data.frame(value = c(length(ascites_yes$sex), length(ascites_no$sex)), group = c('With ascites', 'Without ascites'))
+
+pie_sex <- ggplot(df, aes(x = '', y = value, fill = group)) + geom_col(color = 'black') + coord_polar(theta = 'y') + geom_label(aes(label = value), position = position_stack(vjust = 0.5), show.legend = FALSE) + scale_fill_manual(values = c('skyblue1', 'skyblue4')) + theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), panel.background = element_rect(fill = '#ebf2ff'), plot.background = element_rect(fill = '#ebf2ff'), legend.background = element_rect(fill = '#ebf2ff'))
+
+pie_sex
+```
+
+## Scatter Prototombin time
+
+Suspicious amount of 10.6 and 11 in the first observations.
+
+```{r}
+ggplot(pbc, aes(x=id, y=protime)) + geom_point(shape=18) + ylim(9,14)
+table(pbc$protime)
+plot(table(pbc$protime), ylab= "Prototombin time")
+```
+
+## Boxplots
+
+### Sex
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = sex, y = bili, fill = sex)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and sex') + ylab('Bilirubin (mg/dl)') + xlab('Sex')
+```
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = sex, y = chol, fill = sex)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and sex') + ylab('Cholesterol (mg/dl)') + xlab('Sex')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = sex, y = albumin, fill = sex)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and sex') + ylab('Albumin (g/dl)') + xlab('Sex')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = sex, y = copper, fill = sex)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and sex') + ylab('Copper (ug/day)') + xlab('Sex')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = sex, y = alk.phos, fill = sex)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and sex') + ylab('Alkaline phosphatase (U/liter)') + xlab('Sex')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = sex, y = ast, fill = sex)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and sex') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Sex')
+```
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = sex, y = trig, fill = sex)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and sex') + ylab('Triglyceride (mg/dl)') + xlab('Sex')
+```
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = sex, y = platelet, fill = sex)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and sex') + ylab('Platelet count per microL') + xlab('Sex')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = sex, y = protime, fill = sex)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and sex') + ylab('Prothrombine time (seconds)') + xlab('Sex')
+```
+### Stage
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = stage, y = bili, fill = stage)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and stage') + ylab('Bilirubin (mg/dl)') + xlab('Stage')
+```
+
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = stage, y = chol, fill = stage)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and stage') + ylab('Cholesterol (mg/dl)') + xlab('Stage')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = stage, y = albumin, fill = stage)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and stage') + ylab('Albumin (g/dl)') + xlab('Stage')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = stage, y = copper, fill = stage)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and stage') + ylab('Copper (ug/day)') + xlab('Stage')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = stage, y = alk.phos, fill = stage)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and stage') + ylab('Alkaline phosphatase (U/liter)') + xlab('Stage')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = stage, y = ast, fill = stage)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and stage') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Stage')
+```
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = stage, y = trig, fill = stage)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and stage') + ylab('Triglyceride (mg/dl)') + xlab('Stage')
+
+```
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = stage, y = platelet, fill = stage)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and stage') + ylab('Platelet count per microL') + xlab('Stage')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = stage, y = protime, fill = stage)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and stage') + ylab('Prothrombine time (seconds)') + xlab('Stage')
+```
+
+### Edema
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = edema, y = bili, fill = edema)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and edema') + ylab('Bilirubin (mg/dl)') + xlab('Edema')
+```
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = edema, y = chol, fill = edema)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and edema') + ylab('Cholesterol (mg/dl)') + xlab('Edema')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = edema, y = albumin, fill = edema)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and edema') + ylab('Albumin (g/dl)') + xlab('Edema')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = edema, y = copper, fill = edema)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and edema') + ylab('Copper (ug/day)') + xlab('Edema')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = edema, y = alk.phos, fill = edema)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and edema') + ylab('Alkaline phosphatase (U/liter)') + xlab('Edema')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = edema, y = ast, fill = edema)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and edema') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Edema')
+```
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = edema, y = trig, fill = edema)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and edema') + ylab('Triglyceride (mg/dl)') + xlab('Edema')
+```
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = edema, y = platelet, fill = edema)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and edema') + ylab('Platelet count per microL') + xlab('Edema')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = edema, y = protime, fill = edema)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and edema') + ylab('Prothrombine time (seconds)') + xlab('Edema')
+```
+
+### Diuretic
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = bili, fill = diuretic)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and diuretic') + ylab('Bilirubin (mg/dl)') + xlab('Diuretic')
+```
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = chol, fill = diuretic)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and diuretic') + ylab('Cholesterol (mg/dl)') + xlab('Diuretic')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = albumin, fill = diuretic)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and diuretic') + ylab('Albumin (g/dl)') + xlab('Diuretic')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = copper, fill = diuretic)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and diuretic') + ylab('Copper (ug/day)') + xlab('Diuretic')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = alk.phos, fill = diuretic)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and diuretic') + ylab('Alkaline phosphatase (U/liter)') + xlab('Diuretic')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = ast, fill = diuretic)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and diuretic') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Diuretic')
+```
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = trig, fill = diuretic)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and diuretic') + ylab('Triglyceride (mg/dl)') + xlab('Diuretic')
+```
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = platelet, fill = diuretic)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and diuretic') + ylab('Platelet count per microL') + xlab('Diuretic')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = diuretic, y = protime, fill = diuretic)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and diuretic') + ylab('Prothrombine time (seconds)') + xlab('Diuretic')
+```
+
+### Hepatomegaly
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = bili, fill = hepato)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and hepatomegaly') + ylab('Bilirubin (mg/dl)') + xlab('Hepatomegaly')
+```
+
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = chol, fill = hepato)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and hepatomegaly') + ylab('Cholesterol (mg/dl)') + xlab('Hepatomegaly')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = albumin, fill = hepato)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and hepatomegaly') + ylab('Albumin (g/dl)') + xlab('Hepatomegaly')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = copper, fill = hepato)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and hepatomegaly') + ylab('Copper (ug/day)') + xlab('Hepatomegaly')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = alk.phos, fill = hepato)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and hepatomegaly') + ylab('Alkaline phosphatase (U/liter)') + xlab('Hepatomegaly')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = ast, fill = hepato)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and hepatomegaly') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Hepatomegaly')
+```
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = trig, fill = hepato)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and hepatomegally') + ylab('Triglyceride (mg/dl)') + xlab('Hepatomegally')
+```
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = platelet, fill = hepato)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and hepatomegaly') + ylab('Platelet count per microL') + xlab('Hepatomegaly')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = hepato, y = protime, fill = hepato)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and hepatomegally') + ylab('Prothrombine time (seconds)') + xlab('Hepatomegally')
+```
+
+### Status
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = status, y = bili, fill = status)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and status') + ylab('Bilirubin (mg/dl)') + xlab('Status')
+```
+
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = status, y = chol, fill = status)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and status') + ylab('Cholesterol (mg/dl)') + xlab('Status')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = status, y = albumin, fill = status)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and status') + ylab('Albumin (g/dl)') + xlab('Status')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = status, y = copper, fill = status)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and status') + ylab('Copper (ug/day)') + xlab('Status')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = status, y = alk.phos, fill = status)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and status') + ylab('Alkaline phosphatase (U/liter)') + xlab('Status')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = status, y = ast, fill = status)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and status') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Status')
+```
+
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = status, y = trig, fill = status)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and status') + ylab('Triglyceride (mg/dl)') + xlab('Status')
+```
+
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = status, y = platelet, fill = status)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and status') + ylab('Platelet count per microL') + xlab('Status')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = status, y = protime, fill = status)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and status') + ylab('Prothrombine time (seconds)') + xlab('Status')
+```
+
+### Treatment
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = trt, y = bili, fill = trt)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and treatment') + ylab('Bilirubin (mg/dl)') + xlab('Treatment')
+```
+
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = trt, y = chol, fill = trt)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and treatment') + ylab('Cholesterol (mg/dl)') + xlab('Treatment')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = trt, y = albumin, fill = trt)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and treatment') + ylab('Albumin (g/dl)') + xlab('Treatment')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = trt, y = copper, fill = trt)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and treatment') + ylab('Copper (ug/day)') + xlab('Treatment')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = trt, y = alk.phos, fill = trt)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and treatment') + ylab('Alkaline phosphatase (U/liter)') + xlab('Treatment')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = trt, y = ast, fill = trt)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and treatment') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Treatment')
+```
+
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = trt, y = trig, fill = trt)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and treatment') + ylab('Triglyceride (mg/dl)') + xlab('Treatment')
+```
+
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = trt, y = platelet, fill = trt)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and treatment') + ylab('Platelet count per microL') + xlab('Treatment')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = trt, y = protime, fill = trt)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and treatment') + ylab('Prothrombine time (seconds)') + xlab('Treatment')
+```
+
+### Ascites
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = bili, fill = ascites)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and ascites') + ylab('Bilirubin (mg/dl)') + xlab('Ascites')
+```
+
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = chol, fill = ascites)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and ascites') + ylab('Cholesterol (mg/dl)') + xlab('Ascites')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = albumin, fill = ascites)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and ascites') + ylab('Albumin (g/dl)') + xlab('Ascites')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = copper, fill = ascites)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and ascites') + ylab('Copper (ug/day)') + xlab('Ascites')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = alk.phos, fill = ascites)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and ascites') + ylab('Alkaline phosphatase (U/liter)') + xlab('Ascites')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = ast, fill = ascites)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and ascites') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Ascites')
+```
+
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = trig, fill = ascites)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and ascites') + ylab('Triglyceride (mg/dl)') + xlab('Ascites')
+```
+
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = platelet, fill = ascites)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and ascites') + ylab('Platelet count per microL') + xlab('Ascites')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = ascites, y = protime, fill = ascites)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and ascites') + ylab('Prothrombine time (seconds)') + xlab('Ascites')
+```
+
+### Spiders
+
+1.  Bilirubin
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = bili, fill = spiders)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Bilirubin and spiders') + ylab('Bilirubin (mg/dl)') + xlab('Spiders')
+```
+
+2. Serum cholesterol
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = chol, fill = spiders)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Cholesterol and spiders') + ylab('Cholesterol (mg/dl)') + xlab('Spiders')
+```
+
+3. Albumin
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = albumin, fill = spiders)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Albumin and spiders') + ylab('Albumin (g/dl)') + xlab('Spiders')
+```
+4. Copper
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = copper, fill = spiders)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Copper and spiders') + ylab('Copper (ug/day)') + xlab('Spiders')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = alk.phos, fill = spiders)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Alkaline phosphatase and spiders') + ylab('Alkaline phosphatase (U/liter)') + xlab('Spiders')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = ast, fill = spiders)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Aspartate aminotransferase and spiders') + ylab('Aspartate aminotransferase (U/ml)') + xlab('Spiders')
+```
+
+7. Triglyceride
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = trig, fill = spiders)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Triglyceride and spiders') + ylab('Triglyceride (mg/dl)') + xlab('Spiders')
+```
+
+8. Platelet
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = platelet, fill = spiders)) + geom_boxplot(notch = T) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Platelet and spiders') + ylab('Platelet count per microL') + xlab('Spiders')
+```
+
+9. Prothrombin time
+
+```{r}
+ggplot(pbc, aes(x = spiders, y = protime, fill = spiders)) + geom_boxplot(notch = F) + stat_summary(fun = mean, geom = 'point', shape = 15, size = 3)  + scale_fill_brewer(palette = 3) + theme_classic() + ggtitle('Prothrombine time and spiders') + ylab('Prothrombine time (seconds)') + xlab('Spiders')
+```
+
+## Normality analysis
+
+### Shapiro tests
+
+```{r}
+library(BSDA)
+
+names <- NA
+for(i in 1:length(colnames(hepatomegaly_no))) {
+  if(class(hepatomegaly_no[[i]]) != 'factor') {
+    names <- c(names, colnames(hepatomegaly_no)[i])
+  }
+}
+
+names <- names[2:13]
+names
+
+```
+
+```{r}
+normality_table <- matrix(NA, 22, 12)
+colnames(normality_table) <- c('number', names[2:12])
+rownames(normality_table) <- c('general', 'males', 'females', 'censored', 'transplanted', 'dead', 'treated', 'placebo', 'stage1', 'stage2', 'stage3', 'stage4', 'edema yes', 'edema no','diuretic yes', 'diuretic no', 'spiders yes', 'spiders no', 'hepatomegaly yes', 'hepatomegaly no', 'ascites yes', 'ascites no')
+
+normality_table[,'number'] <- c(length(pbc$id), length(males$id), length(females$id), length(censored$id), length(transplanted$id), length(dead$id), length(treated$id), length(placebo$id), length(stage1$id), length(stage2$id), length(stage3$id), length(stage4$id), length(edema_yes$id), length(edema_no$id), length(diuretic_yes$id), length(diuretic_no$id), length(spiders_yes$id), length(spiders_no$id), length(hepatomegaly_yes$id), length(hepatomegaly_no$id), length(ascites_yes$id), length(ascites_no$id))
+
+normality_table
+```
+
+#### General 
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(pbc[[i]])$p.value < 0.05) {
+    normality_table['general', i] <- FALSE
+  }
+  else {
+    normality_table['general', i] <- TRUE
+  }
+}
+```
+
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3, main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+9. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Females
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(females[[i]])$p.value < 0.05) {
+    normality_table['females', i] <- FALSE
+  }
+  else {
+    normality_table['females', i] <- TRUE
+  }
+}
+```
+
+```{r}
+detach(pbc)
+attach(females)
+```
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Males
+
+```{r}
+detach(females)
+attach(males)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(males[[i]])$p.value < 0.05) {
+    normality_table['males', i] <- FALSE
+  }
+  else {
+    normality_table['males', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Edema 
+
+```{r}
+detach(males)
+attach(edema_yes)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(edema_yes[[i]])$p.value < 0.05) {
+    normality_table['edema yes', i] <- FALSE
+  }
+  else {
+    normality_table['edema yes', i] <- TRUE
+  }
+}
+```
+
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper[which(copper < 500)])
+
+qqnorm(copper[which(copper < 500)],pch = 3,main='Q-Q plot Copper')
+qqline(copper[which(copper < 500)],lwd=2,col='red')
+
+normality_table['edema yes', 'copper'] <- 1
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos[which(alk.phos < 5000)])
+
+qqnorm(alk.phos[which(alk.phos < 5000)],pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos[which(alk.phos < 5000)],lwd=2,col='red')
+
+normality_table['edema yes', 'alk.phos'] <- 1
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### No edema
+
+```{r}
+detach(edema_yes)
+attach(edema_no)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(edema_no[[i]])$p.value < 0.05) {
+    normality_table['edema no', i] <- FALSE
+  }
+  else {
+    normality_table['edema no', i] <- TRUE
+  }
+}
+```
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Diuretic 
+
+```{r}
+detach(edema_no)
+attach(diuretic_yes)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(diuretic_yes[[i]])$p.value < 0.05) {
+    normality_table['diuretic yes', i] <- FALSE
+  }
+  else {
+    normality_table['diuretic yes', i] <- TRUE
+  }
+}
+```
+
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### No diuretic
+
+```{r}
+detach(diuretic_yes)
+attach(diuretic_no)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(diuretic_no[[i]])$p.value < 0.05) {
+    normality_table['diuretic no', i] <- FALSE
+  }
+  else {
+    normality_table['diuretic no', i] <- TRUE
+  }
+}
+```
+
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Censored
+
+```{r}
+detach(diuretic_no)
+attach(censored)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(censored[[i]])$p.value < 0.05) {
+    normality_table['censored', i] <- FALSE
+  }
+  else {
+    normality_table['censored', i] <- TRUE
+  }
+}
+```
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Transplanted
+
+```{r}
+detach(censored)
+attach(transplanted)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(transplanted[[i]])$p.value < 0.05) {
+    normality_table['transplanted', i] <- FALSE
+  }
+  else {
+    normality_table['transplanted', i] <- TRUE
+  }
+}
+```
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili[which(bili < 8)])
+
+qqnorm(bili[which(bili < 8)],pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili[which(bili < 8)],lwd=2,col='red')
+
+normality_table['transplanted', 'bili'] <- 1
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol[which(chol < 1000)])
+
+qqnorm(chol[which(chol < 1000)],pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol[which(chol < 1000)],lwd=2,col='red')
+
+normality_table['transplanted', 'chol'] <- 1
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper[which(copper < 300)])
+
+qqnorm(copper[which(copper < 300)],pch = 3,main='Q-Q plot Copper')
+qqline(copper[which(copper < 300)],lwd=2,col='red')
+
+normality_table['transplanted', 'copper'] <- 1
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos[which(alk.phos < 3000)])
+
+qqnorm(alk.phos[which(alk.phos < 3000)],pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos[which(alk.phos < 3000)],lwd=2,col='red')
+
+normality_table['transplanted', 'alk.phos'] <- 1
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Dead
+
+```{r}
+detach(transplanted)
+attach(dead)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(dead[[i]])$p.value < 0.05) {
+    normality_table['dead', i] <- FALSE
+  }
+  else {
+    normality_table['dead', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Stage 1
+
+```{r}
+detach(dead)
+attach(stage1)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(stage1[[i]])$p.value < 0.05) {
+    normality_table['stage1', i] <- FALSE
+  }
+  else {
+    normality_table['stage1', i] <- TRUE
+  }
+}
+```
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili[which(bili < 5)])
+
+qqnorm(bili[which(bili < 5)],pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili[which(bili < 5)],lwd=2,col='red')
+
+normality_table['stage1', 'bili'] <- 1
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig[which(trig < 160)])
+
+qqnorm(trig[which(trig < 160)],pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig[which(trig < 160)],lwd=2,col='red')
+
+normality_table['stage1', 'trig'] <- 1
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime[which(protime < 12)])
+
+qqnorm(protime[which(protime < 12)],pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime[which(protime < 12)],lwd=2,col='red')
+
+normality_table['stage1', 'protime'] <- 1
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Stage 2
+
+```{r}
+detach(stage1)
+attach(stage2)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(stage2[[i]])$p.value < 0.05) {
+    normality_table['stage2', i] <- FALSE
+  }
+  else {
+    normality_table['stage2', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Stage 3
+
+```{r}
+detach(stage2)
+attach(stage3)
+```
+
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(stage3[[i]])$p.value < 0.05) {
+    normality_table['stage3', i] <- FALSE
+  }
+  else {
+    normality_table['stage3', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Stage 4
+
+```{r}
+detach(stage3)
+attach(stage4)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(stage4[[i]])$p.value < 0.05) {
+    normality_table['stage4', i] <- FALSE
+  }
+  else {
+    normality_table['stage4', i] <- TRUE
+  }
+}
+```
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Ascites 
+
+```{r}
+detach(stage4)
+attach(ascites_yes)
+```
+
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(ascites_yes[[i]])$p.value < 0.05) {
+    normality_table['ascites yes', i] <- FALSE
+  }
+  else {
+    normality_table['ascites yes', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol[which(chol < 600)])
+
+qqnorm(chol[which(chol < 600)],pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol[which(chol < 600)],lwd=2,col='red')
+
+normality_table['ascites yes', 'chol'] <- 1
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+
+4. Copper
+
+```{r}
+shapiro.test(copper[which(copper < 300)])
+
+qqnorm(copper[which(copper < 300)],pch = 3,main='Q-Q plot Copper')
+qqline(copper[which(copper < 300)],lwd=2,col='red')
+
+normality_table['ascites yes', 'copper'] <- 1
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig[which(trig < 300)])
+
+qqnorm(trig[which(trig < 300)],pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig[which(trig < 300)],lwd=2,col='red')
+
+normality_table['ascites yes', 'trig'] <- 1
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet[which(platelet < 360)])
+
+qqnorm(platelet[which(platelet < 360)],pch = 3,main='Q-Q plot Platelet')
+qqline(platelet[which(platelet < 360)],lwd=2,col='red')
+
+normality_table['ascites yes', 'platelet'] <- 1
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime[which(protime < 14)])
+
+qqnorm(protime[which(protime < 14)],pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime[which(protime < 14)],lwd=2,col='red')
+
+normality_table['ascites yes', 'protime'] <- 1
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### No ascites
+
+```{r}
+detach(ascites_yes)
+attach(ascites_no)
+```
+
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(ascites_no[[i]])$p.value < 0.05) {
+    normality_table['ascites no', i] <- FALSE
+  }
+  else {
+    normality_table['ascites no', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Hepatomegaly 
+
+```{r}
+detach(ascites_no)
+attach(hepatomegaly_yes)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(hepatomegaly_yes[[i]])$p.value < 0.05) {
+    normality_table['hepatomegaly yes', i] <- FALSE
+  }
+  else {
+    normality_table['hepatomegaly yes', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### No hepatomegaly 
+
+```{r}
+detach(hepatomegaly_yes)
+attach(hepatomegaly_no)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(hepatomegaly_no[[i]])$p.value < 0.05) {
+    normality_table['hepatomegaly no', i] <- FALSE
+  }
+  else {
+    normality_table['hepatomegaly no', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Spiders  
+
+```{r}
+detach(hepatomegaly_no)
+attach(spiders_yes)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(spiders_yes[[i]])$p.value < 0.05) {
+    normality_table['spiders yes', i] <- FALSE
+  }
+  else {
+    normality_table['spiders yes', i] <- TRUE
+  }
+}
+```
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### No spiders 
+
+```{r}
+detach(spiders_yes)
+attach(spiders_no)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(spiders_no[[i]])$p.value < 0.05) {
+    normality_table['spiders no', i] <- FALSE
+  }
+  else {
+    normality_table['spiders no', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Treated
+
+```{r}
+detach(spiders_no)
+attach(treated)
+```
+
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(treated[[i]])$p.value < 0.05) {
+    normality_table['treated', i] <- FALSE
+  }
+  else {
+    normality_table['treated', i] <- TRUE
+  }
+}
+```
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+```
+
+#### Placebo
+
+```{r}
+detach(treated)
+attach(placebo)
+```
+
+```{r}
+for(i in names[2:12]) {
+  if(shapiro.test(placebo[[i]])$p.value < 0.05) {
+    normality_table['placebo', i] <- FALSE
+  }
+  else {
+    normality_table['placebo', i] <- TRUE
+  }
+}
+normality_table
+```
+
+1.  Bilirubin
+
+```{r}
+shapiro.test(bili)
+
+qqnorm(bili,pch = 3,main='Q-Q plot Bilirubin')
+qqline(bili,lwd=2,col='red')
+```
+
+2. Serum cholesterol
+
+```{r}
+shapiro.test(chol)
+
+qqnorm(chol,pch = 3,main='Q-Q plot Serum cholesterol')
+qqline(chol,lwd=2,col='red')
+```
+
+3. Albumin
+
+```{r}
+shapiro.test(albumin)
+
+qqnorm(albumin,pch = 3,main='Q-Q plot Albumin')
+qqline(albumin,lwd=2,col='red')
+```
+
+4. Copper
+
+```{r}
+shapiro.test(copper)
+
+qqnorm(copper,pch = 3,main='Q-Q plot Copper')
+qqline(copper,lwd=2,col='red')
+```
+
+5. Alkaline phosphatase
+
+```{r}
+shapiro.test(alk.phos)
+
+qqnorm(alk.phos,pch = 3,main='Q-Q plot Alkaline phosphatase')
+qqline(alk.phos,lwd=2,col='red')
+```
+
+6. Aspartate aminotransferase
+
+```{r}
+shapiro.test(ast)
+
+qqnorm(ast,pch = 3,main='Q-Q plot Aspartate aminotransferase')
+qqline(ast,lwd=2,col='red')
+```
+
+7. Triglyceride
+
+```{r}
+shapiro.test(trig)
+
+qqnorm(trig,pch = 3,main='Q-Q plot Triglyceride')
+qqline(trig,lwd=2,col='red')
+```
+
+8. Platelet
+
+```{r}
+shapiro.test(platelet)
+
+qqnorm(platelet,pch = 3,main='Q-Q plot Platelet')
+qqline(platelet,lwd=2,col='red')
+```
+
+9. Prothrombin time
+
+```{r}
+shapiro.test(protime)
+
+qqnorm(protime,pch = 3,main='Q-Q plot Prothrombin time')
+qqline(protime,lwd=2,col='red')
+```
+
+10. Age
+
+```{r}
+shapiro.test(age)
+
+qqnorm(age,pch = 3,main='Q-Q plot Age')
+qqline(age,lwd=2,col='red')
+```
+
+11. Time
+
+```{r}
+shapiro.test(time)
+
+qqnorm(time,pch = 3,main='Q-Q plot Time')
+qqline(time,lwd=2,col='red')
+detach(placebo)
+```
+
+# Descriptive analysis
+
+## Mean table
+
+```{r}
+mean_table <- matrix()
+mean_table$Albumin <- c(mean(pbc$albumin), mean(males$albumin), mean(females$albumin), mean(ascites_no$albumin), mean(ascites_yes$albumin), mean(censored$albumin), mean(transplanted$albumin), mean(dead$albumin), mean(edema_no$albumin), mean(edema_yes$albumin), mean(diuretic_no$albumin), mean(diuretic_yes$albumin),mean(hepatomegaly_no$albumin), mean(hepatomegaly_yes$albumin), mean(spiders_no$albumin), mean(spiders_yes$albumin), mean(stage1$albumin), mean(stage2$albumin), mean(stage3$albumin), mean(stage4$albumin), mean(placebo$albumin), mean(treated$albumin))
+
+mean_table <- as.data.frame(mean_table)
+
+rownames(mean_table) <- c('General', 'Males', 'Females', 'Ascites no', 'Ascites yes', 'Censored', 'Transplanted', 'Dead', 'Edema no', 'Edema yes', 'Diuretic no', 'Diuretic yes', 'Hepatomegaly no', 'Hepatomegaly yes', 'Spiders no', 'Spiders yes', 'Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Placebo', 'Treated')
+
+mean_table$Bilirubin <- c(mean(pbc$bili), mean(males$bili), mean(females$bili), mean(ascites_no$bili), mean(ascites_yes$bili), mean(censored$bili), mean(transplanted$bili), mean(dead$bili), mean(edema_no$bili), mean(edema_yes$bili),mean(diuretic_no$bili), mean(diuretic_yes$bili), mean(hepatomegaly_no$bili), mean(hepatomegaly_yes$bili), mean(spiders_no$bili), mean(spiders_yes$bili), mean(stage1$bili), mean(stage2$bili), mean(stage3$bili), mean(stage4$bili), mean(placebo$bili), mean(treated$bili))
+
+mean_table$Cholesterol <- c(mean(pbc$chol[which(is.na(pbc$chol) == FALSE)]), mean(males$chol[which(is.na(males$chol) == FALSE)]), mean(females$chol[which(is.na(females$chol) == FALSE)]), mean(ascites_no$chol[which(is.na(ascites_no$chol) == FALSE)]), mean(ascites_yes$chol[which(is.na(ascites_yes$chol) == FALSE)]), mean(censored$chol[which(is.na(censored$chol) == FALSE)]), mean(transplanted$chol[which(is.na(transplanted$chol) == FALSE)]), mean(dead$chol[which(is.na(dead$chol) == FALSE)]), mean(edema_no$chol[which(is.na(edema_no$chol) == FALSE)]), mean(edema_yes$chol[which(is.na(edema_yes$chol) == FALSE)]), mean(diuretic_no$chol[which(is.na(diuretic_no$chol) == FALSE)]), mean(diuretic_yes$chol[which(is.na(diuretic_yes$chol) == FALSE)]), mean(hepatomegaly_no$chol[which(is.na(hepatomegaly_no$chol) == FALSE)]), mean(hepatomegaly_yes$chol[which(is.na(hepatomegaly_yes$chol) == FALSE)]), mean(spiders_no$chol[which(is.na(spiders_no$chol) == FALSE)]), mean(spiders_yes$chol[which(is.na(spiders_yes$chol) == FALSE)]), mean(stage1$chol[which(is.na(stage1$chol) == FALSE)]), mean(stage2$chol[which(is.na(stage2$chol) == FALSE)]), mean(stage3$chol[which(is.na(stage3$chol) == FALSE)]), mean(stage4$chol[which(is.na(stage4$chol) == FALSE)]), mean(placebo$chol[which(is.na(placebo$chol) == FALSE)]), mean(treated$chol[which(is.na(treated$chol) == FALSE)]))
+
+mean_table$Copper <- c(mean(pbc$copper[which(is.na(pbc$copper) == FALSE)]), mean(males$copper[which(is.na(males$copper) == FALSE)]), mean(females$copper[which(is.na(females$copper) == FALSE)]), mean(ascites_no$copper[which(is.na(ascites_no$copper) == FALSE)]), mean(ascites_yes$copper[which(is.na(ascites_yes$copper) == FALSE)]), mean(censored$copper[which(is.na(censored$copper) == FALSE)]), mean(transplanted$copper[which(is.na(transplanted$copper) == FALSE)]), mean(dead$copper[which(is.na(dead$copper) == FALSE)]), mean(edema_no$copper[which(is.na(edema_no$copper) == FALSE)]), mean(edema_yes$copper[which(is.na(edema_yes$copper) == FALSE)]), mean(diuretic_no$copper[which(is.na(diuretic_no$copper) == FALSE)]), mean(diuretic_yes$copper[which(is.na(diuretic_yes$copper) == FALSE)]), mean(hepatomegaly_no$copper[which(is.na(hepatomegaly_no$copper) == FALSE)]), mean(hepatomegaly_yes$copper[which(is.na(hepatomegaly_yes$copper) == FALSE)]), mean(spiders_no$copper[which(is.na(spiders_no$copper) == FALSE)]), mean(spiders_yes$copper[which(is.na(spiders_yes$copper) == FALSE)]), mean(stage1$copper[which(is.na(stage1$copper) == FALSE)]), mean(stage2$copper[which(is.na(stage2$copper) == FALSE)]), mean(stage3$copper[which(is.na(stage3$copper) == FALSE)]), mean(stage4$copper[which(is.na(stage4$copper) == FALSE)]), mean(placebo$copper[which(is.na(placebo$copper) == FALSE)]), mean(treated$copper[which(is.na(treated$copper) == FALSE)]))
+
+mean_table$Phosphatase <- c(mean(pbc$alk.phos), mean(males$alk.phos), mean(females$alk.phos), mean(ascites_no$alk.phos), mean(ascites_yes$alk.phos), mean(censored$alk.phos), mean(transplanted$alk.phos), mean(dead$alk.phos), mean(edema_no$alk.phos), mean(edema_yes$alk.phos), mean(diuretic_no$alk.phos), mean(diuretic_yes$alk.phos), mean(hepatomegaly_no$alk.phos), mean(hepatomegaly_yes$alk.phos), mean(spiders_no$alk.phos), mean(spiders_yes$alk.phos), mean(stage1$alk.phos), mean(stage2$alk.phos), mean(stage3$alk.phos), mean(stage4$alk.phos), mean(placebo$alk.phos), mean(treated$alk.phos))
+
+mean_table$Aspartate <- c(mean(pbc$ast), mean(males$ast), mean(females$ast), mean(ascites_no$ast), mean(ascites_yes$ast), mean(censored$ast), mean(transplanted$ast), mean(dead$ast), mean(edema_no$ast), mean(edema_yes$ast), mean(diuretic_no$ast), mean(diuretic_yes$ast), mean(hepatomegaly_no$ast), mean(hepatomegaly_yes$ast), mean(spiders_no$ast), mean(spiders_yes$ast), mean(stage1$ast), mean(stage2$ast), mean(stage3$ast), mean(stage4$ast), mean(placebo$ast), mean(treated$ast))
+
+mean_table$Prothrombin <- c(mean(pbc$protime), mean(males$protime), mean(females$protime), mean(ascites_no$protime), mean(ascites_yes$protime), mean(censored$protime), mean(transplanted$protime), mean(dead$protime), mean(edema_no$protime), mean(edema_yes$protime), mean(diuretic_no$protime), mean(diuretic_yes$protime), mean(hepatomegaly_no$protime), mean(hepatomegaly_yes$protime), mean(spiders_no$protime), mean(spiders_yes$protime), mean(stage1$protime), mean(stage2$protime), mean(stage3$protime), mean(stage4$protime), mean(placebo$protime), mean(treated$protime))
+
+mean_table$Triglycerides <- c(mean(pbc$trig[which(is.na(pbc$trig) == FALSE)]), mean(males$trig[which(is.na(males$trig) == FALSE)]), mean(females$trig[which(is.na(females$trig) == FALSE)]), mean(ascites_no$trig[which(is.na(ascites_no$trig) == FALSE)]), mean(ascites_yes$trig[which(is.na(ascites_yes$trig) == FALSE)]), mean(censored$trig[which(is.na(censored$trig) == FALSE)]), mean(transplanted$trig[which(is.na(transplanted$trig) == FALSE)]), mean(dead$trig[which(is.na(dead$trig) == FALSE)]), mean(edema_no$trig[which(is.na(edema_no$trig) == FALSE)]), mean(edema_yes$trig[which(is.na(edema_yes$trig) == FALSE)]), mean(diuretic_no$trig[which(is.na(diuretic_no$trig) == FALSE)]), mean(diuretic_yes$trig[which(is.na(diuretic_yes$trig) == FALSE)]), mean(hepatomegaly_no$trig[which(is.na(hepatomegaly_no$trig) == FALSE)]), mean(hepatomegaly_yes$trig[which(is.na(hepatomegaly_yes$trig) == FALSE)]), mean(spiders_no$trig[which(is.na(spiders_no$trig) == FALSE)]), mean(spiders_yes$trig[which(is.na(spiders_yes$trig) == FALSE)]), mean(stage1$trig[which(is.na(stage1$trig) == FALSE)]), mean(stage2$trig[which(is.na(stage2$trig) == FALSE)]), mean(stage3$trig[which(is.na(stage3$trig) == FALSE)]), mean(stage4$trig[which(is.na(stage4$trig) == FALSE)]), mean(placebo$trig[which(is.na(placebo$trig) == FALSE)]), mean(treated$trig[which(is.na(treated$trig) == FALSE)]))
+
+mean_table$Platelet <- c(mean(pbc$platelet[which(is.na(pbc$platelet) == FALSE)]), mean(males$platelet[which(is.na(males$platelet) == FALSE)]), mean(females$platelet[which(is.na(females$platelet) == FALSE)]), mean(ascites_no$platelet[which(is.na(ascites_no$platelet) == FALSE)]), mean(ascites_yes$platelet[which(is.na(ascites_yes$platelet) == FALSE)]), mean(censored$platelet[which(is.na(censored$platelet) == FALSE)]), mean(transplanted$platelet[which(is.na(transplanted$platelet) == FALSE)]), mean(dead$platelet[which(is.na(dead$platelet) == FALSE)]), mean(edema_no$platelet[which(is.na(edema_no$platelet) == FALSE)]), mean(edema_yes$platelet[which(is.na(edema_yes$platelet) == FALSE)]), mean(diuretic_no$platelet[which(is.na(diuretic_no$platelet) == FALSE)]), mean(diuretic_yes$platelet[which(is.na(diuretic_yes$platelet) == FALSE)]), mean(hepatomegaly_no$platelet[which(is.na(hepatomegaly_no$platelet) == FALSE)]), mean(hepatomegaly_yes$platelet[which(is.na(hepatomegaly_yes$platelet) == FALSE)]), mean(spiders_no$platelet[which(is.na(spiders_no$platelet) == FALSE)]), mean(spiders_yes$platelet[which(is.na(spiders_yes$platelet) == FALSE)]), mean(stage1$platelet[which(is.na(stage1$platelet) == FALSE)]), mean(stage2$platelet[which(is.na(stage2$platelet) == FALSE)]), mean(stage3$platelet[which(is.na(stage3$platelet) == FALSE)]), mean(stage4$platelet[which(is.na(stage4$platelet) == FALSE)]), mean(placebo$platelet[which(is.na(placebo$platelet) == FALSE)]), mean(treated$platelet[which(is.na(treated$platelet) == FALSE)]))
+
+mean_table$Age <- c(mean(pbc$age), mean(males$age), mean(females$age), mean(ascites_no$age), mean(ascites_yes$age), mean(censored$age), mean(transplanted$age), mean(dead$age), mean(edema_no$age), mean(edema_yes$age), mean(diuretic_no$age), mean(diuretic_yes$age), mean(hepatomegaly_no$age), mean(hepatomegaly_yes$age), mean(spiders_no$age), mean(spiders_yes$age), mean(stage1$age), mean(stage2$age), mean(stage3$age), mean(stage4$age), mean(placebo$age), mean(treated$age))
+
+mean_table <- mean_table[,2:11]
+
+mean_table
+```
+
+## Summary
+
+```{r}
+library(psych)
+
+summary_pbc <- describe(pbc[,c(2,5,seq(11,19))], fast =T)
+
+summary_females <- describe(females[,c(2,5,seq(11,19))], fast =T)
+
+summary_males <- describe(males[,c(2,5,seq(11,19))], fast =T)
+
+summary_hepatomegaly_no <- describe(hepatomegaly_no[,c(2,5,seq(11,19))], fast =T)
+
+summary_hepatomegaly_yes <- describe(hepatomegaly_yes[,c(2,5,seq(11,19))], fast =T)
+
+summary_edema_no <- describe(edema_no[,c(2,5,seq(11,19))], fast =T)
+
+summary_edema_yes <- describe(edema_yes[,c(2,5,seq(11,19))], fast =T)
+
+summary_diuretic_no <- describe(diuretic_no[,c(2,5,seq(11,19))], fast =T)
+
+summary_diuretic_yes <- describe(diuretic_yes[,c(2,5,seq(11,19))], fast =T)
+
+summary_stage1 <- describe(stage1[,c(2,5,seq(11,19))], fast =T)
+
+summary_stage2 <- describe(stage2[,c(2,5,seq(11,19))], fast =T)
+
+summary_stage3 <- describe(stage3[,c(2,5,seq(11,19))], fast =T)
+
+summary_stage4 <- describe(stage4[,c(2,5,seq(11,19))], fast =T)
+
+summary_censored <- describe(censored[,c(2,5,seq(11,19))], fast =T)
+
+summary_transplanted <- describe(transplanted[,c(2,5,seq(11,19))], fast =T)
+
+summary_dead <- describe(dead[,c(2,5,seq(11,19))], fast =T)
+
+summary_placebo <- describe(placebo[,c(2,5,seq(11,19))], fast =T)
+
+summary_treated <- describe(treated[,c(2,5,seq(11,19))], fast =T)
+
+summary_spiders_no <- describe(spiders_no[,c(2,5,seq(11,19))], fast =T)
+
+summary_spiders_yes <- describe(spiders_yes[,c(2,5,seq(11,19))], fast =T)
+
+summary_ascites_no <- describe(ascites_no[,c(2,5,seq(11,19))], fast =T)
+
+summary_ascites_yes <- describe(ascites_yes[,c(2,5,seq(11,19))], fast =T)
+```
+
+## Summary by categories
+
+1. Time
+```{r}
+summary_time <- matrix(c(summary_pbc['time',], summary_females['time',], summary_males['time',], summary_hepatomegaly_no['time',], summary_hepatomegaly_yes['time',], summary_edema_no['time',], summary_edema_yes['time',], summary_diuretic_no['time',], summary_diuretic_yes['time',], summary_stage1['time',], summary_stage2['time',], summary_stage3['time',], summary_stage4['time',], summary_censored['time',], summary_transplanted['time',], summary_dead['time',], summary_placebo['time',], summary_treated['time',], summary_spiders_no['time',], summary_spiders_yes['time',], summary_ascites_no['time',], summary_ascites_yes['time',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_time) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes', 'summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_time) <- colnames(summary_pbc)
+```
+
+2. Age
+
+```{r}
+summary_age <- matrix(c(summary_pbc['age',], summary_females['age',], summary_males['age',], summary_hepatomegaly_no['age',], summary_hepatomegaly_yes['age',], summary_edema_no['age',], summary_edema_yes['age',], summary_diuretic_no['age',], summary_diuretic_yes['age',], summary_stage1['age',], summary_stage2['age',], summary_stage3['age',], summary_stage4['age',], summary_censored['age',], summary_transplanted['age',], summary_dead['age',], summary_placebo['age',], summary_treated['age',], summary_spiders_no['age',], summary_spiders_yes['age',], summary_ascites_no['age',], summary_ascites_yes['age',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_age) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes','summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_age) <- colnames(summary_pbc)
+```
+
+3. Bilirubin
+
+```{r}
+summary_bilirubin <- matrix(c(summary_pbc['bili',], summary_females['bili',], summary_males['bili',], summary_hepatomegaly_no['bili',], summary_hepatomegaly_yes['bili',], summary_edema_no['bili',], summary_edema_yes['bili',], summary_diuretic_no['bili',], summary_diuretic_yes['bili',], summary_stage1['bili',], summary_stage2['bili',], summary_stage3['bili',], summary_stage4['bili',], summary_censored['bili',], summary_transplanted['bili',], summary_dead['bili',], summary_placebo['bili',], summary_treated['bili',], summary_spiders_no['bili',], summary_spiders_yes['bili',], summary_ascites_no['bili',], summary_ascites_yes['bili',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_bilirubin) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes', 'summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_bilirubin) <- colnames(summary_pbc)
+```
+
+4. Serum cholesterol
+
+```{r}
+summary_chol <- matrix(c(summary_pbc['chol',], summary_females['chol',], summary_males['chol',], summary_hepatomegaly_no['chol',], summary_hepatomegaly_yes['chol',], summary_edema_no['chol',], summary_edema_yes['chol',], summary_diuretic_no['chol',], summary_diuretic_yes['chol',], summary_stage1['chol',], summary_stage2['chol',], summary_stage3['chol',], summary_stage4['chol',], summary_censored['chol',], summary_transplanted['chol',], summary_dead['chol',], summary_placebo['chol',], summary_treated['chol',], summary_spiders_no['chol',], summary_spiders_yes['chol',], summary_ascites_no['chol',], summary_ascites_yes['chol',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_chol) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes', 'summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_chol) <- colnames(summary_pbc)
+```
+
+5. Albumin
+
+```{r}
+summary_albumin <- matrix(c(summary_pbc['albumin',], summary_females['albumin',], summary_males['albumin',], summary_hepatomegaly_no['albumin',], summary_hepatomegaly_yes['albumin',], summary_edema_no['albumin',], summary_edema_yes['albumin',], summary_diuretic_no['albumin',], summary_diuretic_yes['albumin',], summary_stage1['albumin',], summary_stage2['albumin',], summary_stage3['albumin',], summary_stage4['albumin',], summary_censored['albumin',], summary_transplanted['albumin',], summary_dead['albumin',], summary_placebo['albumin',], summary_treated['albumin',], summary_spiders_no['albumin',], summary_spiders_yes['albumin',], summary_ascites_no['albumin',], summary_ascites_yes['albumin',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_albumin) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_diuretic_no', 'summary_diuretic_yes','summary_edema_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_albumin) <- colnames(summary_pbc)
+```
+
+6. Copper
+
+```{r}
+summary_copper <- matrix(c(summary_pbc['copper',], summary_females['copper',], summary_males['copper',], summary_hepatomegaly_no['copper',], summary_hepatomegaly_yes['copper',], summary_edema_no['copper',], summary_edema_yes['copper',], summary_diuretic_no['copper',], summary_diuretic_yes['copper',], summary_stage1['copper',], summary_stage2['copper',], summary_stage3['copper',], summary_stage4['copper',], summary_censored['copper',], summary_transplanted['copper',], summary_dead['copper',], summary_placebo['copper',], summary_treated['copper',], summary_spiders_no['copper',], summary_spiders_yes['copper',], summary_ascites_no['copper',], summary_ascites_yes['copper',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_copper) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes', 'summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_copper) <- colnames(summary_pbc)
+```
+
+7. Alkaline phosphatase
+
+```{r}
+summary_alk.phos <- matrix(c(summary_pbc['alk.phos',], summary_females['alk.phos',], summary_males['alk.phos',], summary_hepatomegaly_no['alk.phos',], summary_hepatomegaly_yes['alk.phos',], summary_edema_no['alk.phos',], summary_edema_yes['alk.phos',], summary_diuretic_no['alk.phos',], summary_diuretic_yes['alk.phos',], summary_stage1['alk.phos',], summary_stage2['alk.phos',], summary_stage3['alk.phos',], summary_stage4['alk.phos',], summary_censored['alk.phos',], summary_transplanted['alk.phos',], summary_dead['alk.phos',], summary_placebo['alk.phos',], summary_treated['alk.phos',], summary_spiders_no['alk.phos',], summary_spiders_yes['alk.phos',], summary_ascites_no['alk.phos',], summary_ascites_yes['alk.phos',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_alk.phos) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes', 'summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_alk.phos) <- colnames(summary_pbc)
+```
+
+8. Aspartate aminotransferase
+
+```{r}
+summary_ast <- matrix(c(summary_pbc['ast',], summary_females['ast',], summary_males['ast',], summary_hepatomegaly_no['ast',], summary_hepatomegaly_yes['ast',], summary_edema_no['ast',], summary_edema_yes['ast',], summary_diuretic_no['ast',], summary_diuretic_yes['ast',], summary_stage1['ast',], summary_stage2['ast',], summary_stage3['ast',], summary_stage4['ast',], summary_censored['ast',], summary_transplanted['ast',], summary_dead['ast',], summary_placebo['ast',], summary_treated['ast',], summary_spiders_no['ast',], summary_spiders_yes['ast',], summary_ascites_no['ast',], summary_ascites_yes['ast',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_ast) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes', 'summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_ast) <- colnames(summary_pbc)
+```
+
+9. Prothrombin time
+
+```{r}
+summary_protime <- matrix(c(summary_pbc['protime',], summary_females['protime',], summary_males['protime',], summary_hepatomegaly_no['protime',], summary_hepatomegaly_yes['protime',], summary_edema_no['protime',], summary_edema_yes['protime',], summary_diuretic_no['protime',], summary_diuretic_yes['protime',], summary_stage1['protime',], summary_stage2['protime',], summary_stage3['protime',], summary_stage4['protime',], summary_censored['protime',], summary_transplanted['protime',], summary_dead['protime',], summary_placebo['protime',], summary_treated['protime',], summary_spiders_no['protime',], summary_spiders_yes['protime',], summary_ascites_no['protime',], summary_ascites_yes['protime',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_protime) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes', 'summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_protime) <- colnames(summary_pbc)
+```
+
+10. Triglycerides
+
+```{r}
+summary_trig <- matrix(c(summary_pbc['trig',], summary_females['trig',], summary_males['trig',], summary_hepatomegaly_no['trig',], summary_hepatomegaly_yes['trig',], summary_edema_no['trig',], summary_edema_yes['trig',], summary_diuretic_no['trig',], summary_diuretic_yes['trig',], summary_stage1['trig',], summary_stage2['trig',], summary_stage3['trig',], summary_stage4['trig',], summary_censored['trig',], summary_transplanted['trig',], summary_dead['trig',], summary_placebo['trig',], summary_treated['trig',], summary_spiders_no['trig',], summary_spiders_yes['trig',], summary_ascites_no['trig',], summary_ascites_yes['trig',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_trig) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes','summary_diuretic_no', 'summary_diuretic_yes','summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_trig) <- colnames(summary_pbc)
+```
+
+11. Platelet
+
+```{r}
+summary_platelet <- matrix(c(summary_pbc['platelet',], summary_females['platelet',], summary_males['platelet',], summary_hepatomegaly_no['platelet',], summary_hepatomegaly_yes['platelet',], summary_edema_no['platelet',], summary_edema_yes['platelet',], summary_diuretic_no['platelet',], summary_diuretic_yes['platelet',], summary_stage1['platelet',], summary_stage2['platelet',], summary_stage3['platelet',], summary_stage4['platelet',], summary_censored['platelet',], summary_transplanted['platelet',], summary_dead['platelet',], summary_placebo['platelet',], summary_treated['platelet',], summary_spiders_no['platelet',], summary_spiders_yes['platelet',], summary_ascites_no['platelet',], summary_ascites_yes['platelet',]), 22, length(colnames(summary_pbc)), byrow = T)
+
+rownames(summary_platelet) <- c('summary_pbc', 'summary_females', 'summary_males', 'summary_hepatomegaly_no', 'summary_hepatomegaly_yes', 'summary_edema_no', 'summary_edema_yes','summary_diuretic_no', 'summary_diuretic_yes', 'summary_stage1', 'summary_stage2', 'summary_stage3', 'summary_stage4', 'summary_censored', 'summary_transplanted', 'summary_dead', 'summary_placebo', 'summary_treated', 'summary_spiders_no', 'summary_spiders_yes','summary_ascites_no', 'summary_ascites_yes')
+
+colnames(summary_platelet) <- colnames(summary_pbc)
+```
+
+
+## Hypothesis testing between groups
+
+```{r}
+library(BSDA)
+
+names <- NA
+for(i in 1:length(colnames(hepatomegaly_no))) {
+  if(class(hepatomegaly_no[[i]]) != 'factor') {
+    names <- c(names, colnames(hepatomegaly_no)[i])
+  }
+}
+
+names <- names[2:13]
+names
+```
+
+### Hepatomegaly
+
+```{r}
+hepatomegaly_hp <- matrix(NA, 2, length(names))
+rownames(hepatomegaly_hp) <- c('Hepatomegaly no', 'Hepatomegaly yes')
+colnames(hepatomegaly_hp) <- names
+
+for(i in names) {
+  if(class(hepatomegaly_no[[i]]) != 'factor') {
+    test <- z.test(hepatomegaly_no[[i]], hepatomegaly_yes[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(hepatomegaly_no[[i]][which(is.na(hepatomegaly_no[[i]]) == FALSE)]), sigma.y=sd(hepatomegaly_yes[[i]][which(is.na(hepatomegaly_yes[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      hepatomegaly_hp[1, i] <- 'EQUAL'
+      hepatomegaly_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(hepatomegaly_no[[i]], hepatomegaly_yes[[i]], alternative = 'greater', mu=0, sigma.x=sd(hepatomegaly_no[[i]][which(is.na(hepatomegaly_no[[i]]) == FALSE)]), sigma.y=sd(hepatomegaly_yes[[i]][which(is.na(hepatomegaly_yes[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        hepatomegaly_hp[1, i] <- 'Lower'
+        hepatomegaly_hp[2, i] <- 'Higher'
+      }
+      else {
+        hepatomegaly_hp[1, i] <- 'Higher'
+        hepatomegaly_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+hepatomegaly_hp
+```
+
+
+### Ascites
+
+```{r}
+ascites_hp <- matrix(NA, 2, length(names))
+rownames(ascites_hp) <- c('ascites no', 'ascites yes')
+colnames(ascites_hp) <- names
+
+for(i in names) {
+  if(class(ascites_no[[i]]) != 'factor') {
+    test <- z.test(ascites_no[[i]], ascites_yes[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(ascites_no[[i]][which(is.na(ascites_no[[i]]) == FALSE)]), sigma.y=sd(ascites_yes[[i]][which(is.na(ascites_yes[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      ascites_hp[1, i] <- 'EQUAL'
+      ascites_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(ascites_no[[i]], ascites_yes[[i]], alternative = 'greater', mu=0, sigma.x=sd(ascites_no[[i]][which(is.na(ascites_no[[i]]) == FALSE)]), sigma.y=sd(ascites_yes[[i]][which(is.na(ascites_yes[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        ascites_hp[1, i] <- 'Lower'
+        ascites_hp[2, i] <- 'Higher'
+      }
+      else {
+        ascites_hp[1, i] <- 'Higher'
+        ascites_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+
+test <- z.test(ascites_no[['chol']], ascites_yes[['chol']][which(ascites_yes[['chol']] < 600)], alternative = 'greater', mu=0, sigma.x=sd(ascites_no[['chol']][which(is.na(ascites_no[['chol']]) == FALSE)]), sigma.y=sd(ascites_yes[['chol']][which(ascites_yes[['chol']] < 600)][which(is.na(ascites_yes[['chol']][which(ascites_yes[['chol']] < 600)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+ascites_hp[1, 'chol'] <- 'Higher'
+ascites_hp[2, 'chol'] <- 'Lower'
+
+test <- z.test(ascites_no[['copper']], ascites_yes[['copper']][which(ascites_yes[['copper']] < 300)], alternative = 'greater', mu=0, sigma.x=sd(ascites_no[['copper']][which(is.na(ascites_no[['copper']]) == FALSE)]), sigma.y=sd(ascites_yes[['copper']][which(ascites_yes[['copper']] < 300)][which(is.na(ascites_yes[['copper']][which(ascites_yes[['copper']] < 300)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+ascites_hp[1, 'copper'] <- 'Lower'
+ascites_hp[2, 'copper'] <- 'Higher'
+
+test <- z.test(ascites_no[['trig']], ascites_yes[['trig']][which(ascites_yes[['trig']] < 300)], alternative = 'greater', mu=0, sigma.x=sd(ascites_no[['trig']][which(is.na(ascites_no[['trig']]) == FALSE)]), sigma.y=sd(ascites_yes[['trig']][which(ascites_yes[['trig']] < 300)][which(is.na(ascites_yes[['trig']][which(ascites_yes[['trig']] < 300)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+ascites_hp[1, 'trig'] <- 'Lower'
+ascites_hp[2, 'trig'] <- 'Higher'
+
+
+test <- z.test(ascites_no[['platelet']], ascites_yes[['platelet']][which(ascites_yes[['platelet']] < 360)], alternative = 'less', mu=0, sigma.x=sd(ascites_no[['platelet']][which(is.na(ascites_no[['platelet']]) == FALSE)]), sigma.y=sd(ascites_yes[['platelet']][which(ascites_yes[['platelet']] < 360)][which(is.na(ascites_yes[['platelet']][which(ascites_yes[['platelet']] < 360)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+ascites_hp[1, 'platelet'] <- 'Higher'
+ascites_hp[2, 'platelet'] <- 'Lower'
+
+
+test <- z.test(ascites_no[['protime']], ascites_yes[['protime']][which(ascites_yes[['protime']] < 14)], alternative = 'greater', mu=0, sigma.x=sd(ascites_no[['protime']][which(is.na(ascites_no[['protime']]) == FALSE)]), sigma.y=sd(ascites_yes[['protime']][which(ascites_yes[['protime']] < 14)][which(is.na(ascites_yes[['protime']][which(ascites_yes[['protime']] < 14)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+ascites_hp[1, 'protime'] <- 'Lower'
+ascites_hp[2, 'protime'] <- 'Higher'
+
+
+for(i in colnames(ascites_hp)[2:12]) {
+  if(normality_table[,i]['ascites yes'] == 0) {
+    test <- wilcox.test(ascites_yes[[i]], ascites_no[[i]])
+    if(test$p.value > 0.05) {
+      ascites_hp[1, i] <- 'EQUAL'
+      ascites_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- wilcox.test(ascites_no[[i]], ascites_yes[[i]], alternative = 'greater')
+      if(test$p.value > 0.05) {
+        ascites_hp[1, i] <- '(W) Lower'
+        ascites_hp[2, i] <- '(W) Higher'
+      }
+      else {
+        ascites_hp[1, i] <- '(W) Higher'
+        ascites_hp[2, i] <- '(W) Lower'
+      }
+    }
+  }
+}
+
+
+ascites_hp
+```
+
+### spiders
+
+```{r}
+spiders_hp <- matrix(NA, 2, length(names))
+rownames(spiders_hp) <- c('spiders no', 'spiders yes')
+colnames(spiders_hp) <- names
+
+for(i in names) {
+  if(class(spiders_no[[i]]) != 'factor') {
+    test <- z.test(spiders_no[[i]], spiders_yes[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(spiders_no[[i]][which(is.na(spiders_no[[i]]) == FALSE)]), sigma.y=sd(spiders_yes[[i]][which(is.na(spiders_yes[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      spiders_hp[1, i] <- 'EQUAL'
+      spiders_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(spiders_no[[i]], spiders_yes[[i]], alternative = 'greater', mu=0, sigma.x=sd(spiders_no[[i]][which(is.na(spiders_no[[i]]) == FALSE)]), sigma.y=sd(spiders_yes[[i]][which(is.na(spiders_yes[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        spiders_hp[1, i] <- 'Lower'
+        spiders_hp[2, i] <- 'Higher'
+      }
+      else {
+        spiders_hp[1, i] <- 'Higher'
+        spiders_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+spiders_hp
+```
+
+### Edema
+
+```{r}
+edema_hp <- matrix(NA, 2, length(names))
+rownames(edema_hp) <- c('edema no', 'edema yes')
+colnames(edema_hp) <- names
+
+for(i in names) {
+  if(class(edema_no[[i]]) != 'factor') {
+    test <- z.test(edema_no[[i]], edema_yes[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(edema_no[[i]][which(is.na(edema_no[[i]]) == FALSE)]), sigma.y=sd(edema_yes[[i]][which(is.na(edema_yes[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      edema_hp[1, i] <- 'EQUAL'
+      edema_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(edema_no[[i]], edema_yes[[i]], alternative = 'greater', mu=0, sigma.x=sd(edema_no[[i]][which(is.na(edema_no[[i]]) == FALSE)]), sigma.y=sd(edema_yes[[i]][which(is.na(edema_yes[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        edema_hp[1, i] <- 'Lower'
+        edema_hp[2, i] <- 'Higher'
+      }
+      else {
+        edema_hp[1, i] <- 'Higher'
+        edema_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+test <- z.test(edema_no[['alk.phos']], edema_yes[['alk.phos']][which(edema_yes[['alk.phos']] < 5000)], alternative = 'greater', mu=0, sigma.x=sd(edema_no[['alk.phos']][which(is.na(edema_no[['alk.phos']]) == FALSE)]), sigma.y=sd(edema_yes[['alk.phos']][which(edema_yes[['alk.phos']] < 5000)][which(is.na(edema_yes[['alk.phos']][which(edema_yes[['alk.phos']] < 5000)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+edema_hp[1, 'alk.phos'] <- 'Higher'
+edema_hp[2, 'alk.phos'] <- 'Lower'
+
+for(i in colnames(edema_hp)[2:12]) {
+  if(normality_table[,i]['edema yes'] == 0) {
+    test <- wilcox.test(edema_yes[[i]], edema_no[[i]])
+    if(test$p.value > 0.05) {
+      edema_hp[1, i] <- 'EQUAL'
+      edema_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- wilcox.test(edema_no[[i]], edema_yes[[i]], alternative = 'greater')
+      if(test$p.value > 0.05) {
+        edema_hp[1, i] <- '(W) Lower'
+        edema_hp[2, i] <- '(W) Higher'
+      }
+      else {
+        edema_hp[1, i] <- '(W) Higher'
+        edema_hp[2, i] <- '(W) Lower'
+      }
+    }
+  }
+}
+
+edema_hp
+```
+
+### Diuretic
+
+```{r}
+diuretic_hp <- matrix(NA, 2, length(names))
+rownames(diuretic_hp) <- c('diuretic no', 'diuretic yes')
+colnames(diuretic_hp) <- names
+
+for(i in names) {
+  if(class(diuretic_no[[i]]) != 'factor') {
+    test <- z.test(diuretic_no[[i]], diuretic_yes[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(diuretic_no[[i]][which(is.na(diuretic_no[[i]]) == FALSE)]), sigma.y=sd(diuretic_yes[[i]][which(is.na(diuretic_yes[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      diuretic_hp[1, i] <- 'EQUAL'
+      diuretic_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(diuretic_no[[i]], diuretic_yes[[i]], alternative = 'greater', mu=0, sigma.x=sd(diuretic_no[[i]][which(is.na(diuretic_no[[i]]) == FALSE)]), sigma.y=sd(diuretic_yes[[i]][which(is.na(diuretic_yes[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        diuretic_hp[1, i] <- 'Lower'
+        diuretic_hp[2, i] <- 'Higher'
+      }
+      else {
+        diuretic_hp[1, i] <- 'Higher'
+        diuretic_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+# test <- z.test(diuretic_no[['alk.phos']], diuretic_yes[['alk.phos']][which(diuretic_yes[['alk.phos']] < 5000)], alternative = 'greater', mu=0, sigma.x=sd(diuretic_no[['alk.phos']][which(is.na(diuretic_no[['alk.phos']]) == FALSE)]), sigma.y=sd(diuretic_yes[['alk.phos']][which(diuretic_yes[['alk.phos']] < 5000)][which(is.na(diuretic_yes[['alk.phos']][which(diuretic_yes[['alk.phos']] < 5000)]) == FALSE)]), conf.level = 0.95)
+# 
+# test$p.value
+# 
+# diuretic_hp[1, 'alk.phos'] <- 'Higher'
+# diuretic_hp[2, 'alk.phos'] <- 'Lower'
+# 
+# for(i in colnames(diuretic_hp)[2:12]) {
+#   if(normality_table[,i]['diuretic yes'] == 0) {
+#     test <- wilcox.test(diuretic_yes[[i]], diuretic_no[[i]])
+#     if(test$p.value > 0.05) {
+#       diuretic_hp[1, i] <- 'EQUAL'
+#       diuretic_hp[2, i] <- 'EQUAL'
+#     }
+#     else {
+#       test <- wilcox.test(diuretic_no[[i]], diuretic_yes[[i]], alternative = 'greater')
+#       if(test$p.value > 0.05) {
+#         diuretic_hp[1, i] <- '(W) Lower'
+#         diuretic_hp[2, i] <- '(W) Higher'
+#       }
+#       else {
+#         diuretic_hp[1, i] <- '(W) Higher'
+#         diuretic_hp[2, i] <- '(W) Lower'
+#       }
+#     }
+#   }
+# }
+
+diuretic_hp
+```
+
+
+### Sex
+
+```{r}
+sex_hp <- matrix(NA, 2, length(names))
+rownames(sex_hp) <- c('females', 'males')
+colnames(sex_hp) <- names
+
+for(i in names) {
+  if(class(females[[i]]) != 'factor') {
+    test <- z.test(females[[i]], males[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(females[[i]][which(is.na(females[[i]]) == FALSE)]), sigma.y=sd(males[[i]][which(is.na(males[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      sex_hp[1, i] <- 'EQUAL'
+      sex_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(females[[i]], males[[i]], alternative = 'greater', mu=0, sigma.x=sd(females[[i]][which(is.na(females[[i]]) == FALSE)]), sigma.y=sd(males[[i]][which(is.na(males[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        sex_hp[1, i] <- 'Lower'
+        sex_hp[2, i] <- 'Higher'
+      }
+      else {
+        sex_hp[1, i] <- 'Higher'
+        sex_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+sex_hp
+```
+
+### Treatment
+
+```{r}
+treatment_hp <- matrix(NA, 2, length(names))
+rownames(treatment_hp) <- c('placebo', 'treated')
+colnames(treatment_hp) <- names
+
+for(i in names) {
+  if(class(placebo[[i]]) != 'factor') {
+    test <- z.test(placebo[[i]], treated[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(placebo[[i]][which(is.na(placebo[[i]]) == FALSE)]), sigma.y=sd(treated[[i]][which(is.na(treated[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      treatment_hp[1, i] <- 'EQUAL'
+      treatment_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(placebo[[i]], treated[[i]], alternative = 'greater', mu=0, sigma.x=sd(placebo[[i]][which(is.na(placebo[[i]]) == FALSE)]), sigma.y=sd(treated[[i]][which(is.na(treated[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        treatment_hp[1, i] <- 'Lower'
+        treatment_hp[2, i] <- 'Higher'
+      }
+      else {
+        treatment_hp[1, i] <- 'Higher'
+        treatment_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+treatment_hp
+```
+
+### Stage 1 vs Stage 2
+
+```{r}
+stage_1_2_hp <- matrix(NA, 2, length(names))
+rownames(stage_1_2_hp) <- c('stage2', 'stage1')
+colnames(stage_1_2_hp) <- names
+
+for(i in names) {
+  if(class(stage2[[i]]) != 'factor') {
+    test <- z.test(stage2[[i]], stage1[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(stage2[[i]][which(is.na(stage2[[i]]) == FALSE)]), sigma.y=sd(stage1[[i]][which(is.na(stage1[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      stage_1_2_hp[1, i] <- 'EQUAL'
+      stage_1_2_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(stage2[[i]], stage1[[i]], alternative = 'greater', mu=0, sigma.x=sd(stage2[[i]][which(is.na(stage2[[i]]) == FALSE)]), sigma.y=sd(stage1[[i]][which(is.na(stage1[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        stage_1_2_hp[1, i] <- 'Lower'
+        stage_1_2_hp[2, i] <- 'Higher'
+      }
+      else {
+        stage_1_2_hp[1, i] <- 'Higher'
+        stage_1_2_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+test <- z.test(stage2[['bili']], stage1[['bili']][which(stage1[['bili']] < 5)], alternative = 'greater', mu=0, sigma.x=sd(stage2[['bili']][which(is.na(stage2[['bili']]) == FALSE)]), sigma.y=sd(stage1[['bili']][which(stage1[['bili']] < 5)][which(is.na(stage1[['bili']][which(stage1[['bili']] < 5)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+stage_1_2_hp[1, 'bili'] <- 'Higher'
+stage_1_2_hp[2, 'bili'] <- 'Lower'
+
+test <- z.test(stage2[['trig']], stage1[['trig']][which(stage1[['trig']] < 160)], alternative = 'greater', mu=0, sigma.x=sd(stage2[['trig']][which(is.na(stage2[['trig']]) == FALSE)]), sigma.y=sd(stage1[['trig']][which(stage1[['trig']] < 160)][which(is.na(stage1[['trig']][which(stage1[['trig']] < 160)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+stage_1_2_hp[1, 'trig'] <- 'Higher'
+stage_1_2_hp[2, 'trig'] <- 'Lower'
+
+test <- z.test(stage2[['protime']], stage1[['protime']][which(stage1[['protime']] < 12)], alternative = 'two.sided', mu=0, sigma.x=sd(stage2[['protime']][which(is.na(stage2[['protime']]) == FALSE)]), sigma.y=sd(stage1[['protime']][which(stage1[['protime']] < 12)][which(is.na(stage1[['protime']][which(stage1[['protime']] < 12)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+
+# for(i in colnames(stage_1_2_hp)[2:12]) {
+#   if(normality_table[,i]['edema 0.5'] == 0) {
+#     test <- wilcox.test(stage1[[i]], stage2[[i]])
+#     if(test$p.value > 0.05) {
+#       stage_1_2_hp[1, i] <- 'EQUAL'
+#       stage_1_2_hp[2, i] <- 'EQUAL'
+#     }
+#     else {
+#       test <- wilcox.test(stage2[[i]], stage1[[i]], alternative = 'greater')
+#       if(test$p.value > 0.05) {
+#         stage_1_2_hp[1, i] <- '(W) Lower'
+#         stage_1_2_hp[2, i] <- '(W) Higher'
+#       }
+#       else {
+#         stage_1_2_hp[1, i] <- '(W) Higher'
+#         stage_1_2_hp[2, i] <- '(W) Lower'
+#       }
+#     }
+#   }
+# }
+
+stage_1_2_hp
+```
+
+### Stage 1 vs Stage 3
+
+```{r}
+stage_1_3_hp <- matrix(NA, 2, length(names))
+rownames(stage_1_3_hp) <- c('stage3', 'stage1')
+colnames(stage_1_3_hp) <- names
+
+for(i in names) {
+  if(class(stage3[[i]]) != 'factor') {
+    test <- z.test(stage3[[i]], stage1[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(stage3[[i]][which(is.na(stage3[[i]]) == FALSE)]), sigma.y=sd(stage1[[i]][which(is.na(stage1[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      stage_1_3_hp[1, i] <- 'EQUAL'
+      stage_1_3_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(stage3[[i]], stage1[[i]], alternative = 'greater', mu=0, sigma.x=sd(stage3[[i]][which(is.na(stage3[[i]]) == FALSE)]), sigma.y=sd(stage1[[i]][which(is.na(stage1[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        stage_1_3_hp[1, i] <- 'Lower'
+        stage_1_3_hp[2, i] <- 'Higher'
+      }
+      else {
+        stage_1_3_hp[1, i] <- 'Higher'
+        stage_1_3_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+
+test <- z.test(stage3[['bili']], stage1[['bili']][which(stage1[['bili']] < 5)], alternative = 'greater', mu=0, sigma.x=sd(stage3[['bili']][which(is.na(stage3[['bili']]) == FALSE)]), sigma.y=sd(stage1[['bili']][which(stage1[['bili']] < 5)][which(is.na(stage1[['bili']][which(stage1[['bili']] < 5)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(stage3[['trig']], stage1[['trig']][which(stage1[['trig']] < 160)], alternative = 'greater', mu=0, sigma.x=sd(stage3[['trig']][which(is.na(stage3[['trig']]) == FALSE)]), sigma.y=sd(stage1[['trig']][which(stage1[['trig']] < 160)][which(is.na(stage1[['trig']][which(stage1[['trig']] < 160)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(stage3[['protime']], stage1[['protime']][which(stage1[['protime']] < 12)], alternative = 'two.sided', mu=0, sigma.x=sd(stage3[['protime']][which(is.na(stage3[['protime']]) == FALSE)]), sigma.y=sd(stage1[['protime']][which(stage1[['protime']] < 12)][which(is.na(stage1[['protime']][which(stage1[['protime']] < 12)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+# for(i in colnames(stage_1_3_hp)[2:12]) {
+#   if(normality_table[,i]['edema 0.5'] == 0) {
+#     test <- wilcox.test(stage1[[i]], stage3[[i]])
+#     if(test$p.value > 0.05) {
+#       stage_1_3_hp[1, i] <- 'EQUAL'
+#       stage_1_3_hp[2, i] <- 'EQUAL'
+#     }
+#     else {
+#       test <- wilcox.test(stage3[[i]], stage1[[i]], alternative = 'greater')
+#       if(test$p.value > 0.05) {
+#         stage_1_3_hp[1, i] <- '(W) Lower'
+#         stage_1_3_hp[2, i] <- '(W) Higher'
+#       }
+#       else {
+#         stage_1_3_hp[1, i] <- '(W) Higher'
+#         stage_1_3_hp[2, i] <- '(W) Lower'
+#       }
+#     }
+#   }
+# }
+
+stage_1_3_hp
+```
+
+### Stage 1 vs Stage 4
+
+```{r}
+stage_1_4_hp <- matrix(NA, 2, length(names))
+rownames(stage_1_4_hp) <- c('stage4', 'stage1')
+colnames(stage_1_4_hp) <- names
+
+for(i in names) {
+  if(class(stage4[[i]]) != 'factor') {
+    test <- z.test(stage4[[i]], stage1[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(stage4[[i]][which(is.na(stage4[[i]]) == FALSE)]), sigma.y=sd(stage1[[i]][which(is.na(stage1[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      stage_1_4_hp[1, i] <- 'EQUAL'
+      stage_1_4_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(stage4[[i]], stage1[[i]], alternative = 'greater', mu=0, sigma.x=sd(stage4[[i]][which(is.na(stage4[[i]]) == FALSE)]), sigma.y=sd(stage1[[i]][which(is.na(stage1[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        stage_1_4_hp[1, i] <- 'Lower'
+        stage_1_4_hp[2, i] <- 'Higher'
+      }
+      else {
+        stage_1_4_hp[1, i] <- 'Higher'
+        stage_1_4_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+test <- z.test(stage4[['bili']], stage1[['bili']][which(stage1[['bili']] < 5)], alternative = 'greater', mu=0, sigma.x=sd(stage4[['bili']][which(is.na(stage4[['bili']]) == FALSE)]), sigma.y=sd(stage1[['bili']][which(stage1[['bili']] < 5)][which(is.na(stage1[['bili']][which(stage1[['bili']] < 5)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(stage4[['trig']], stage1[['trig']][which(stage1[['trig']] < 160)], alternative = 'greater', mu=0, sigma.x=sd(stage4[['trig']][which(is.na(stage4[['trig']]) == FALSE)]), sigma.y=sd(stage1[['trig']][which(stage1[['trig']] < 160)][which(is.na(stage1[['trig']][which(stage1[['trig']] < 160)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(stage4[['protime']], stage1[['protime']][which(stage1[['protime']] < 12)], alternative = 'greater', mu=0, sigma.x=sd(stage4[['protime']][which(is.na(stage4[['protime']]) == FALSE)]), sigma.y=sd(stage1[['protime']][which(stage1[['protime']] < 12)][which(is.na(stage1[['protime']][which(stage1[['protime']] < 12)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+stage_1_4_hp[1, 'protime'] <- 'Higher'
+stage_1_4_hp[2, 'protime'] <- 'Lower'
+
+# for(i in colnames(stage_1_4_hp)[2:12]) {
+#   if(normality_table[,i]['edema 0.5'] == 0) {
+#     test <- wilcox.test(stage1[[i]], stage4[[i]])
+#     if(test$p.value > 0.05) {
+#       stage_1_4_hp[1, i] <- 'EQUAL'
+#       stage_1_4_hp[2, i] <- 'EQUAL'
+#     }
+#     else {
+#       test <- wilcox.test(stage4[[i]], stage1[[i]], alternative = 'greater')
+#       if(test$p.value > 0.05) {
+#         stage_1_4_hp[1, i] <- '(W) Lower'
+#         stage_1_4_hp[2, i] <- '(W) Higher'
+#       }
+#       else {
+#         stage_1_4_hp[1, i] <- '(W) Higher'
+#         stage_1_4_hp[2, i] <- '(W) Lower'
+#       }
+#     }
+#   }
+# }
+
+stage_1_4_hp
+```
+
+### Stage 2 vs Stage 3
+
+```{r}
+stage_2_3_hp <- matrix(NA, 2, length(names))
+rownames(stage_2_3_hp) <- c('stage3', 'stage2')
+colnames(stage_2_3_hp) <- names
+
+for(i in names) {
+  if(class(stage3[[i]]) != 'factor') {
+    test <- z.test(stage3[[i]], stage2[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(stage3[[i]][which(is.na(stage3[[i]]) == FALSE)]), sigma.y=sd(stage2[[i]][which(is.na(stage2[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      stage_2_3_hp[1, i] <- 'EQUAL'
+      stage_2_3_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(stage3[[i]], stage2[[i]], alternative = 'greater', mu=0, sigma.x=sd(stage3[[i]][which(is.na(stage3[[i]]) == FALSE)]), sigma.y=sd(stage2[[i]][which(is.na(stage2[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        stage_2_3_hp[1, i] <- 'Lower'
+        stage_2_3_hp[2, i] <- 'Higher'
+      }
+      else {
+        stage_2_3_hp[1, i] <- 'Higher'
+        stage_2_3_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+stage_2_3_hp
+```
+
+### Stage 2 vs Stage 4
+
+```{r}
+stage_2_4_hp <- matrix(NA, 2, length(names))
+rownames(stage_2_4_hp) <- c('stage4', 'stage2')
+colnames(stage_2_4_hp) <- names
+
+for(i in names) {
+  if(class(stage4[[i]]) != 'factor') {
+    test <- z.test(stage4[[i]], stage2[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(stage4[[i]][which(is.na(stage4[[i]]) == FALSE)]), sigma.y=sd(stage2[[i]][which(is.na(stage2[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      stage_2_4_hp[1, i] <- 'EQUAL'
+      stage_2_4_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(stage4[[i]], stage2[[i]], alternative = 'greater', mu=0, sigma.x=sd(stage4[[i]][which(is.na(stage4[[i]]) == FALSE)]), sigma.y=sd(stage2[[i]][which(is.na(stage2[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        stage_2_4_hp[1, i] <- 'Lower'
+        stage_2_4_hp[2, i] <- 'Higher'
+      }
+      else {
+        stage_2_4_hp[1, i] <- 'Higher'
+        stage_2_4_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+stage_2_4_hp
+```
+
+## Stage 3 vs Stage 4
+
+```{r}
+stage_3_4_hp <- matrix(NA, 2, length(names))
+rownames(stage_3_4_hp) <- c('stage4', 'stage3')
+colnames(stage_3_4_hp) <- names
+
+for(i in names) {
+  if(class(stage4[[i]]) != 'factor') {
+    test <- z.test(stage4[[i]], stage3[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(stage4[[i]][which(is.na(stage4[[i]]) == FALSE)]), sigma.y=sd(stage3[[i]][which(is.na(stage3[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      stage_3_4_hp[1, i] <- 'EQUAL'
+      stage_3_4_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(stage4[[i]], stage3[[i]], alternative = 'greater', mu=0, sigma.x=sd(stage4[[i]][which(is.na(stage4[[i]]) == FALSE)]), sigma.y=sd(stage3[[i]][which(is.na(stage3[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        stage_3_4_hp[1, i] <- 'Lower'
+        stage_3_4_hp[2, i] <- 'Higher'
+      }
+      else {
+        stage_3_4_hp[1, i] <- 'Higher'
+        stage_3_4_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+stage_3_4_hp
+```
+
+## dead vs censored
+
+```{r}
+censored_dead_hp <- matrix(NA, 2, length(names))
+rownames(censored_dead_hp) <- c('censored', 'dead')
+colnames(censored_dead_hp) <- names
+
+for(i in names) {
+  if(class(censored[[i]]) != 'factor') {
+    test <- z.test(censored[[i]], dead[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(censored[[i]][which(is.na(censored[[i]]) == FALSE)]), sigma.y=sd(dead[[i]][which(is.na(dead[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      censored_dead_hp[1, i] <- 'EQUAL'
+      censored_dead_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(censored[[i]], dead[[i]], alternative = 'greater', mu=0, sigma.x=sd(censored[[i]][which(is.na(censored[[i]]) == FALSE)]), sigma.y=sd(dead[[i]][which(is.na(dead[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        censored_dead_hp[1, i] <- 'Lower'
+        censored_dead_hp[2, i] <- 'Higher'
+      }
+      else {
+        censored_dead_hp[1, i] <- 'Higher'
+        censored_dead_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+censored_dead_hp
+```
+
+## Dead vs transplanted
+
+```{r}
+transplanted_dead_hp <- matrix(NA, 2, length(names))
+rownames(transplanted_dead_hp) <- c('transplanted', 'dead')
+colnames(transplanted_dead_hp) <- names
+
+for(i in names) {
+  if(class(transplanted[[i]]) != 'factor') {
+    test <- z.test(transplanted[[i]], dead[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(transplanted[[i]][which(is.na(transplanted[[i]]) == FALSE)]), sigma.y=sd(dead[[i]][which(is.na(dead[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      transplanted_dead_hp[1, i] <- 'EQUAL'
+      transplanted_dead_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(transplanted[[i]], dead[[i]], alternative = 'greater', mu=0, sigma.x=sd(transplanted[[i]][which(is.na(transplanted[[i]]) == FALSE)]), sigma.y=sd(dead[[i]][which(is.na(dead[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        transplanted_dead_hp[1, i] <- 'Lower'
+        transplanted_dead_hp[2, i] <- 'Higher'
+      }
+      else {
+        transplanted_dead_hp[1, i] <- 'Higher'
+        transplanted_dead_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+test <- z.test(dead[['chol']], transplanted[['chol']][which(transplanted[['chol']] < 1000)], alternative = 'two.sided', mu=0, sigma.x=sd(dead[['chol']][which(is.na(dead[['chol']]) == FALSE)]), sigma.y=sd(transplanted[['chol']][which(transplanted[['chol']] < 1000)][which(is.na(transplanted[['chol']][which(transplanted[['chol']] < 1000)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(dead[['bili']], transplanted[['bili']][which(transplanted[['bili']] < 8)], alternative = 'greater', mu=0, sigma.x=sd(dead[['bili']][which(is.na(dead[['bili']]) == FALSE)]), sigma.y=sd(transplanted[['bili']][which(transplanted[['bili']] < 8)][which(is.na(transplanted[['bili']][which(transplanted[['bili']] < 8)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(dead[['copper']], transplanted[['copper']][which(transplanted[['copper']] < 300)], alternative = 'less', mu=0, sigma.x=sd(dead[['copper']][which(is.na(dead[['copper']]) == FALSE)]), sigma.y=sd(transplanted[['copper']][which(transplanted[['copper']] < 300)][which(is.na(transplanted[['copper']][which(transplanted[['copper']] < 300)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+transplanted_dead_hp[1, 'copper'] <- 'Lower'
+transplanted_dead_hp[2, 'copper'] <- 'Higher'
+
+test <- z.test(dead[['alk.phos']], transplanted[['alk.phos']][which(transplanted[['alk.phos']] < 3000)], alternative = 'greater', mu=0, sigma.x=sd(dead[['alk.phos']][which(is.na(dead[['alk.phos']]) == FALSE)]), sigma.y=sd(transplanted[['alk.phos']][which(transplanted[['alk.phos']] < 3000)][which(is.na(transplanted[['alk.phos']][which(transplanted[['alk.phos']] < 3000)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+# for(i in colnames(transplanted_dead_hp)[2:12]) {
+#   if(normality_table[,i]['edema 0.5'] == 0) {
+#     test <- wilcox.test(dead[[i]], transplanted[[i]])
+#     if(test$p.value > 0.05) {
+#       transplanted_dead_hp[1, i] <- 'EQUAL'
+#       transplanted_dead_hp[2, i] <- 'EQUAL'
+#     }
+#     else {
+#       test <- wilcox.test(transplanted[[i]], dead[[i]], alternative = 'greater')
+#       if(test$p.value > 0.05) {
+#         transplanted_dead_hp[1, i] <- '(W) Lower'
+#         transplanted_dead_hp[2, i] <- '(W) Higher'
+#       }
+#       else {
+#         transplanted_dead_hp[1, i] <- '(W) Higher'
+#         transplanted_dead_hp[2, i] <- '(W) Lower'
+#       }
+#     }
+#   }
+# }
+
+transplanted_dead_hp
+```
+
+## Censored vs transplanted
+
+```{r}
+transplanted_censored_hp <- matrix(NA, 2, length(names))
+rownames(transplanted_censored_hp) <- c('transplanted', 'censored')
+colnames(transplanted_censored_hp) <- names
+
+for(i in names) {
+  if(class(transplanted[[i]]) != 'factor') {
+    test <- z.test(transplanted[[i]], censored[[i]], alternative = 'two.sided', mu=0, sigma.x=sd(transplanted[[i]][which(is.na(transplanted[[i]]) == FALSE)]), sigma.y=sd(censored[[i]][which(is.na(censored[[i]]) == FALSE)]), conf.level = 0.95)
+    if(test$p.value > 0.05) {
+      transplanted_censored_hp[1, i] <- 'EQUAL'
+      transplanted_censored_hp[2, i] <- 'EQUAL'
+    }
+    else {
+      test <- z.test(transplanted[[i]], censored[[i]], alternative = 'greater', mu=0, sigma.x=sd(transplanted[[i]][which(is.na(transplanted[[i]]) == FALSE)]), sigma.y=sd(censored[[i]][which(is.na(censored[[i]]) == FALSE)]), conf.level = 0.95)
+      if(test$p.value > 0.05) {
+        transplanted_censored_hp[1, i] <- 'Lower'
+        transplanted_censored_hp[2, i] <- 'Higher'
+      }
+      else {
+        transplanted_censored_hp[1, i] <- 'Higher'
+        transplanted_censored_hp[2, i] <- 'Lower'
+      }
+    }
+  }
+}
+
+test <- z.test(censored[['chol']], transplanted[['chol']][which(transplanted[['chol']] < 1000)], alternative = 'greater', mu=0, sigma.x=sd(censored[['chol']][which(is.na(censored[['chol']]) == FALSE)]), sigma.y=sd(transplanted[['chol']][which(transplanted[['chol']] < 1000)][which(is.na(transplanted[['chol']][which(transplanted[['chol']] < 1000)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(censored[['bili']], transplanted[['bili']][which(transplanted[['bili']] < 8)], alternative = 'greater', mu=0, sigma.x=sd(censored[['bili']][which(is.na(censored[['bili']]) == FALSE)]), sigma.y=sd(transplanted[['bili']][which(transplanted[['bili']] < 8)][which(is.na(transplanted[['bili']][which(transplanted[['bili']] < 8)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(censored[['copper']], transplanted[['copper']][which(transplanted[['copper']] < 300)], alternative = 'greater', mu=0, sigma.x=sd(censored[['copper']][which(is.na(censored[['copper']]) == FALSE)]), sigma.y=sd(transplanted[['copper']][which(transplanted[['copper']] < 300)][which(is.na(transplanted[['copper']][which(transplanted[['copper']] < 300)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+test <- z.test(censored[['alk.phos']], transplanted[['alk.phos']][which(transplanted[['alk.phos']] < 3000)], alternative = 'two.sided', mu=0, sigma.x=sd(censored[['alk.phos']][which(is.na(censored[['alk.phos']]) == FALSE)]), sigma.y=sd(transplanted[['alk.phos']][which(transplanted[['alk.phos']] < 3000)][which(is.na(transplanted[['alk.phos']][which(transplanted[['alk.phos']] < 3000)]) == FALSE)]), conf.level = 0.95)
+
+test$p.value
+
+# for(i in colnames(transplanted_censored_hp)[2:12]) {
+#   if(normality_table[,i]['edema 0.5'] == 0) {
+#     test <- wilcox.test(censored[[i]], transplanted[[i]])
+#     if(test$p.value > 0.05) {
+#       transplanted_censored_hp[1, i] <- 'EQUAL'
+#       transplanted_censored_hp[2, i] <- 'EQUAL'
+#     }
+#     else {
+#       test <- wilcox.test(transplanted[[i]], censored[[i]], alternative = 'greater')
+#       if(test$p.value > 0.05) {
+#         transplanted_censored_hp[1, i] <- '(W) Lower'
+#         transplanted_censored_hp[2, i] <- '(W) Higher'
+#       }
+#       else {
+#         transplanted_censored_hp[1, i] <- '(W) Higher'
+#         transplanted_censored_hp[2, i] <- '(W) Lower'
+#       }
+#     }
+#   }
+# }
+
+transplanted_censored_hp
+```
