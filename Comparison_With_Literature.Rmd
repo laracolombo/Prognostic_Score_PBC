@@ -1,0 +1,87 @@
+---
+title: "Kaplan-Meier curves"
+author: "Lara Colombo, Erik Bot, Michele Rossi, Sabrina Sartori"
+date: '2022-04-05'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(survival)
+library(survminer)
+
+setwd("/Users/laracolombo/Desktop/secondo_semestre/BIOSTATISTICS/project/")
+pbc <- read.csv('pbc_definitivo.csv')
+pbc$time <- pbc$time/365
+```
+
+We took advantage of the Kaplan-Meier estimator to compute the survival curves of the patients. 
+
+The main purpose of this piece of analysis was to verify that the survival of the patients was coherent with the general PBC population survival according to sex, age and D-penicillamine treatment. 
+
+# Stratification by sex 
+
+According to literature, PBC is more frequent in women, but death ratio is higher in men. 
+We therefore computed the KM curves stratified by sex:
+
+```{r}
+fit.sex <- survfit(Surv(time, status) ~ sex, data=pbc)
+print(fit.sex)
+
+ggsurvplot(fit.sex, conf.int = T,
+           risk.table = T, # Add risk table
+           risk.table.col = "strata", # Change risk table color by groups
+           ggtheme = theme_bw(), # Change ggplot2 theme
+           break.time.by=1,
+           legend.labs=c("Female","Male"), legend.title="Sex",
+           pval=T, palette = c("#559ECA", "#E5AEc9"), surv.median.line = "hv")
+
+survdiff(Surv(time, status) ~ pbc$sex, data=pbc)
+
+summary(fit.sex)
+```
+
+As we can see from plot on the left in the sex we have a similar incidence, and  from the p-value of the kaplan-meyer plot we can derive a lower survival for males rather than females, like the literature suggests.
+
+# Stratification by treatment 
+
+Currently, D-penicillamine is considered ineffective in the treatment of PBC. Indeed, our dataset agrees with most literature that there is no significant difference between treated and untreated patients. 
+
+```{r}
+fit.trt <- survfit(Surv(time, status) ~ pbc$trt, data=pbc)
+print(fit.trt)
+
+ggsurvplot(fit.trt, conf.int = T,
+           risk.table = T, # Add risk table
+           risk.table.col = "strata", # Change risk table color by groups
+           ggtheme = theme_bw(), # Change ggplot2 theme
+           break.time.by=1,
+           legend.labs=c("Placebo","D-penicillamine"), legend.title="Treatment",
+           pval=T, palette = c("#80cbc4", "#4A958E"), surv.median.line = "hv")
+```
+
+# Stratification by age 
+
+Lastly, we analyzed patient survival with respect to age. In both plots lighter green represents younger patients, and we see how the age is distributed similarly and how a greater age is associated to a lower survival, that is the contrary of what literature states. This might be because the age reported in our dataset is the actual patient age and not the diagnosis age as present in literature.
+
+Note: we cut the age groups as younger than 39 and older than 60 in order to define a young group and an old group, as literature suggests (Marschall et al., 2019).
+
+```{r}
+
+pbc1 <- pbc[which(pbc$age <= 39 | pbc$age >= 60),]
+pbc1$agecat39 <- cut(pbc1$age, breaks=c(0, 39, Inf), labels=c("young", "old"))
+fit.age <- survfit(Surv(time, status) ~ agecat39, data=pbc1)
+print(fit.age)
+
+ggsurvplot(fit.age, conf.int = T,
+           risk.table = T, # Add risk table
+           risk.table.col = "strata", # Change risk table color by groups
+           ggtheme = theme_bw(), # Change ggplot2 theme
+        
+           legend.labs=c("Young (<= 39)", "Old ( > 60)"), legend.title="Age class", 
+           pval=T, palette = c("#80cbc4", "#0F9569"), surv.median.line = "hv")
+
+survdiff(Surv(time, status) ~ agecat39, data=pbc)
+
+```
+
