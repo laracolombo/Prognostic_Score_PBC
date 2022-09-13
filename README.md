@@ -20,7 +20,7 @@ Before proceeding with the analysis, we had to decide whether to consider the sm
 ## DESCRIPTIVE ANALYSIS
 
 First, we present a comparison of the patients information provided by our dataset with the literature in order to verify that we have a representative subset of PBC patients. To do so, we compared the Kaplan-Meier survival curves for sex, age and treatment. 
-We can conclude that our dataset is representative of PBC population and therefore we had data to develop a score that correctly addresses PBC patients.
+We were able to conclude that our dataset was representative of PBC population and therefore we had data to develop a score that correctly addresses PBC patients.
 
 ## DEVELOPMENT OF THE SCORE
 
