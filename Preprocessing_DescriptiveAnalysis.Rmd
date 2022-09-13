@@ -1,5 +1,5 @@
 ---
-title: "Biostatistics project"
+title: "Explorative analysis of the dataset"
 authors: "Lara Colombo, Erik Bot, Michele Rossi, Sabrina Sartori"
 output: html_document
 ---
