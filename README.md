@@ -41,7 +41,7 @@ Further details are found in the commented R markdown.
 
 ## CLINICAL INTERPRETATION
 
-As said before, positive scores were found to be correlated with an increased risk of death, but in order to find a more precise interpretation of the single values associated to each individual, we decided to divide patients in three groups of risk such as Low, Medium and High, based on the values of the tertiles of the score variable, that are shown below the boxplots in the slide. This cut-off allowed us to obtain three groups of equal size with almost 100 patients each, making them comparable in the further analysis. 
+As said before, positive scores were found to be correlated with an increased risk of death, but in order to find a more precise interpretation of the single values associated to each individual, we decided to divide patients in three groups of risk such as Low, Medium and High, based on the values of the tertiles of the score variable. This cut-off allowed us to obtain three groups of equal size with almost 100 patients each, making them comparable in the further analysis. 
 
 ## SCORE VALIDATION 
 
