@@ -10,7 +10,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(survival)
 library(survminer)
 
-setwd("/Users/laracolombo/Desktop/secondo_semestre/BIOSTATISTICS/project/")
 pbc <- read.csv('pbc_definitivo.csv')
 pbc$time <- pbc$time/365
 ```
