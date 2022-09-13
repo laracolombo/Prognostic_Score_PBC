@@ -26,7 +26,7 @@ We were able to conclude that our dataset was representative of PBC population a
 
 In order to model survival, we relied on a Cox survival model applying a cross validation technique to increase the validity of our results. 
  
-In particular, we randomly split our dataset in a train and test subset, with a proportion of 70-30 respectively. Given that our dataset is unbalanced for what regards the survival status, we had to balance the two groups in order for them to have the same percentage of dead and alive patients. We then performed on the test subset a backward variable selection on the Cox regression model to select the most meaningful variables to use in our score.
+In particular, we randomly split our dataset in a train and test subset, with a proportion of 70-30 respectively. Given that our dataset is unbalanced for what regards the survival status, we had to balance the two groups in order for them to have the same percentage of dead and alive patients. We then performed on the train subset a backward variable selection on the Cox regression model to select the most meaningful variables to use in our score.
 
 In order to increase the robustness of our choice, we repeated the mentioned steps 1000 times, dividing our dataset in train and test in a 1000 different ways, while keeping the same 70-30 proportion, and performing a backward variable selection to each test subset, obtaining 1000 different models. We then recorded the variables that appeared at least half of the times, so the most consistent ones, and we selected among the many different models one that had exactly this 4 variables, which are bilirubin, copper, stage and albumin.
 
