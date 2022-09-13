@@ -43,6 +43,39 @@ Further details are found in the commented R markdown.
 
 As said before, positive scores were found to be correlated with an increased risk of death, but in order to find a more precise interpretation of the single values associated to each individual, we decided to divide patients in three groups of risk such as Low, Medium and High, based on the values of the tertiles of the score variable, that are shown below the boxplots in the slide. This cut-off allowed us to obtain three groups of equal size with almost 100 patients each, making them comparable in the further analysis. 
 
+## SCORE VALIDATION 
+
+In our analysis, found that the majority of patients that were alive after the end of the study were given a low or medium score based on their variables recorded at the beginning of it, while the majority of patients who had an higher score didn’t survive eventually. 
+
+Additionally, we were able to assert that well-known markers of PBC showed higher values as the patients risk (computed by our score) incrased. 
+
+Most importantly, our score can be employed to get the probability of survival of each single patient, which we think might be its main application in clinical practice. As an example, we computed the survival probability of three patients that were given mean scores of the low, medium and high risk groups. The results were a significant difference in survival: in fact, while the low-risk patient shows good chance of survival even after 10 years with a survival probability of 80%, the high risk patient showed a survival probability of just 40% already at 5 years, while almost a null probability at 10. The medium group patient instead shows  good survival probabilities overall, but they seem to decrease very rapidly as years pass and therefore should probably be taken under control. 
+
+Finally, we were able to assert that our score is in accordance with established PCB prognostic scores by computing the respective Spearman's rank correlation coefficient.
+
+## LIMITATIONS OF THE ANALYSIS 
+
+Even though we applied cross validation techniques and we repeated the procedure 1000 times, we are perfectly aware that testing our score on the same dataset from which it was derived is a strong limitation of our analysis and might have led to the risk of overfitting. However, we were not able to find any other dataset that was adequate for testing our score. 
+
+## BIBLIOGRAPHY 
+Kim, W. R., Therneau, T. M., Wiesner, R. H., Poterucha, J. J., Benson, J. T., Malinchoc, M., Larusso, N. F., Lindor, K. D., & Dickson, E. R. (2000). A Revised Natural History Model for Primary Sclerosing Cholangitis. Mayo Clinic Proceedings, 75(7), 688–694. https://doi.org/10.4065/75.7.688
+Goet, J. C., Harms, M. H., Carbone, M., & Hansen, B. E. (2018). Risk stratification and prognostic modelling in primary biliary cholangitis. Best Practice & Research Clinical Gastroenterology, 34–35, 95–106. https://doi.org/10.1016/j.bpg.2018.06.006
+Gong, Y., Klingenberg, S. L., & Gluud, C. (2004). D-penicillamine for primary biliary cirrhosis. Cochrane Database of Systematic Reviews, 2010(1). https://doi.org/10.1002/14651858.CD004789.pub2
+Grambsch, P. M., Dickson, E. R., Wiesner, R. H., & Langworthy, A. (1989). Application of the Mayo Primary Biliary Cirrhosis Survival Model to Mayo Liver Transplant Patients. Mayo Clinic Proceedings, 64(6), 699–704. https://doi.org/10.1016/S0025-6196(12)65350-6
+Lammers, W. J., Kowdley, K. V., & Buuren, H. R. van. (2014). Predicting outcome in primary biliary cirrhosis. Annals of Hepatology, 13(4), 316–326. https://doi.org/10.1016/S1665-2681(19)30838-5
+Locke, G. R., Therneau, T. M., Ludwig, J., Dickson, E. R., & Lindor, K. D. (1996). Time course of histological progression in primary biliary cirrhosis. Hepatology, 23(1), 52–56. https://doi.org/10.1002/hep.510230108
+Marschall, H.-U., Henriksson, I., Lindberg, S., Söderdahl, F., Thuresson, M., Wahlin, S., & Ludvigsson, J. F. (2019). Incidence, prevalence, 
+and outcome of primary biliary cholangitis in a nationwide Swedish population-based cohort. Scientific Reports, 9(1), 11525. https://doi.org/10.1038/s41598-019-47890-2
+Monaco, A., Pantaleo, E., Amoroso, N., Bellantuono, L., Stella, A., & Bellotti, R. (2021). Country-level factors dynamics and ABO/Rh blood 
+groups contribution to COVID-19 mortality. Scientific Reports, 11(1), 24527. https://doi.org/10.1038/s41598-021-04162-2
+Royston, P., Moons, K. G. M., Altman, D. G., & Vergouwe, Y. (2009). Prognosis and prognostic research: Developing a prognostic model. 
+BMJ, 338(mar31 1), b604–b604. https://doi.org/10.1136/bmj.b604
+Images created with BioRender.com
+
+
+
+
+
 
 
 
