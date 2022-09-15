@@ -1,0 +1,546 @@
+---
+title: "second_part_analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(survival)
+library(survminer)
+library(tibble)
+```
+
+```{r}
+setwd("/Users/laracolombo/Desktop/secondo_semestre/BIOSTATISTICS/project/")
+pbc <- read.csv('pbc_definitivo.csv')
+
+pbc$X <- NULL
+pbc$APRI <- NULL
+
+pbc$time <- pbc$time / 365
+```
+
+First of all, we computed for each patient the Mayo 1989, Mayo 1994, Newcastle and Globe scores, that are all prognostic PBC scores that have been largely validated in clinical practice. We did so to eventually compare the results of our score with the following:
+
+```{r}
+pbc$mayo89 <- (pbc$age * 0.039 + log(pbc$bili) * 0.871 + log(pbc$protime) * 2.38 + 0.859 * pbc$edema - 2.53 * log(pbc$albumin))
+
+pbc$mayo94 <-  (pbc$age * 0.051 + log(pbc$bili) * 1.209 + log(pbc$protime) * 2.754 + 0.675 * pbc$edema - 3.304 * log(pbc$albumin))
+
+pbc$newcastle <- (0.047 * pbc$age + 0.2610 * log((pbc$alk.phos)/145) - 2.53 * ((pbc$albumin)/3.4) + 0.195 * log(pbc$bili/1.1))
+
+pbc$globe <- (0.044378 * pbc$age + 0.93982 * log((pbc$bili) * 1.1) + 0.335648 * log((pbc$alk.phos) * 145) - 2.266708 * pbc$albumin * 3.4 - 0.002581 * pbc$platelet + 1.216865)
+```
+
+```{r}
+pbc_dead <- pbc[which(pbc$status == 1),]
+pbc_alive <- pbc[which(pbc$status == 0),]
+```
+
+# Splitting the dataset in a train and test set
+
+Then, we splitted the dataset in a train set (70%) and in a test set (30%) taking advantage of the 'pec' package. Since our dataset was unbalanced, we made sure to keep the proportions of dead and alive patients.
+
+```{r}
+library(pec)
+
+set.seed(30)
+
+# to keep proportions 
+
+split_dead <- sample(c(rep(0, 0.7 * nrow(pbc_dead)), rep(1, 0.3 * nrow(pbc_dead))))
+split_alive <- sample(c(rep(0, 0.7 * nrow(pbc_alive)), rep(1, 0.3 * nrow(pbc_alive))))
+
+pbc_train_dead <- pbc_dead[split_dead == 0,]
+pbc_test_dead <- pbc_dead[split_dead == 1,]
+pbc_train_alive <- pbc_alive[split_alive == 0,]
+pbc_test_alive <- pbc_alive[split_alive == 1,]
+
+# balanced train and test sets
+
+pbc_train <- rbind(pbc_train_dead, pbc_train_alive)
+pbc_test <- rbind(pbc_test_dead, pbc_test_alive)
+
+# to verify that the split was balanced:
+
+length(pbc_train[which(pbc_train$status == 0),]$status)/(length(pbc_train$status))
+length(pbc_test[which(pbc_test$status == 0),]$status)/(length(pbc_test$status))
+```
+
+# Score development
+
+We then performed on the train subset a backward variable selection on the Cox regression model to find the most meaningful variables - and respective coefficients - to build our score. 
+
+```{r}
+selectCox(Surv(time, status) ~ trt + age + sex + ascites + hepato + spiders + edema + bili + chol + albumin + copper + alk.phos + ast + trig + platelet + protime + stage + diuretic, data = pbc_train, rule = 'aic')
+
+pbc$score1 <- (pbc$bili * 0.1479  + pbc$albumin * -1.2627 + pbc$copper * 0.0047 + pbc$stage * 0.5093)
+
+# centering around the mean
+
+pbc$score1 <- pbc$score1 - mean(pbc$score1, na.rm = T)
+
+# computing the score on the test set
+
+pbc_test$score1 <- (pbc_test$bili * 0.1479  + pbc_test$albumin * -1.2627 + pbc_test$copper * 0.0047 + pbc_test$stage * 0.5093)
+
+pbc_test$score1 <- pbc_test$score1 - mean(pbc_test$score1, na.rm = T)
+```
+
+# Score validation 
+
+## Survival curve
+
+We first divided our score into a negative and positive class, that indicate respectively a lower and higher risk since the score variable was centered around the mean. 
+Here we show the Kaplan Meier curves of patients with a positive and negative score and we can see a clear difference in the survival probability over time. We also get a clear statistically significant difference between the two curves, as shown by the p-value of the log rank test. In particular, we can see that the median survival time is hugely different between the two groups of patients, with a median survival time of 3.5 years for those with a positive score and of 11.5 years (more than three times) for those with a negative score.
+
+```{r}
+summary(pbc$score1)
+
+pbc$scorecat <- cut(pbc$score1, breaks=c(-Inf, 0, Inf), labels=c("Negative", "Positive"))
+
+fit.score <- survfit(Surv(time, status) ~ scorecat, data=pbc)
+print(fit.score)
+
+ggsurvplot(fit.score, 
+           conf.int = T,
+           risk.table = T, # Add risk table
+           risk.table.col = "strata", # Change risk table color by groups
+           ggtheme = theme_bw(), # Change ggplot2 theme
+           break.time.by=1,
+           palette=c("#80CBC4", "salmon"),
+           legend.labs=c("Negative", "Positive"),
+           legend.title="Score class",
+           title="KAPLAN-MEIER CURVES BY SCORE CLASS",
+           pval=T, surv.median.line = "hv")
+
+survdiff(Surv(time, status) ~ scorecat, data=pbc)
+```
+## PH assumptions 
+
+After that, we had to check the proportionality hazard assumptions of our score, and here we show the Martingale residuals and Schoenfeld residuals over time, and from the high p-value of the test we can see that the assumptions are met.
+
+
+```{r}
+cox.model <- coxph(Surv(time, status) ~ score1, data = pbc)
+
+summary(cox.model)
+
+diag.ph <- cox.zph(cox.model)
+
+diag.ph
+
+ggcoxzph(diag.ph, point.col = "#80CBC4")
+
+ggcoxdiagnostics(cox.model, type = "martingale",linear.predictions = T, col ="#80CBC4")
+
+```
+
+We then checked the results of the score on the test set, to see if indeed our model performs well on unseen data. Here we can see that a 1-unit increase in our score almost doubles the hazard, which could be helpful also for the interpretation in a clinical setting. 
+The global statistical significance of the model is supported by p-values in the range of [e-11, e-16], while the score was found to be significant in the Cox model with a p-value of 7.43e-13
+
+```{r}
+survtest <- coxph(Surv(time, status) ~ score1, data = pbc_test)
+
+summary(survtest)
+```
+## Computing survival probability 
+
+Here we show how our score can be employed to compute the survival probability of an individual patient. 
+As an example, we report the survival probability of a patient whose score was equal to the mean score of the dataset: 
+
+```{r}
+mean(pbc$score1, na.rm = T)
+plot(survfit(survtest, data=pbc), 
+     col="darkorange2", lwd=2, lty=1,
+     xlab='Time [years]', ylab='Survival Probability',
+     main='Estimated survival probability\n for score equal to 0')
+grid()
+```
+The survival probability can be computed for any value of the score:
+
+```{r}
+survtest <- coxph(Surv(time, status) ~ score1, data = pbc)
+
+var <- as.numeric(readline(prompt="Enter score: "))
+
+score_df <- with(pbc,
+               data.frame(score1 = var)
+)
+
+fit.score <- survfit(survtest, newdata = score_df)
+
+plot(survfit(survtest, newdata = score_df), 
+     col="darkorange2", lwd=2, lty=1,
+     xlab='Time [days]', ylab='Survival Probability',
+     main='Estimated survival probability\n for input score', )
+grid()
+
+#max(pbc$time)
+
+
+(fit.score$surv[22] + fit.score$surv[23])/2 # survival at 1 year
+(fit.score$surv[112] + fit.score$surv[113])/2 # survival at 5 years
+(fit.score$surv[224] + fit.score$surv[225])/2 # survival at 10 years
+```
+We then computed the survival probability of each patient at 1, 5 and 10 years:
+
+```{r}
+pbc$surv1 <- rep(NA, length(pbc$score1))
+pbc$surv5 <- rep(NA, length(pbc$score1)) 
+pbc$surv10 <- rep(NA, length(pbc$score1))
+
+
+for(i in seq(1,length(pbc$score1))) {
+  if(is.na(pbc[i,]$score1)) {
+    pbc[i,]$surv1 <- NA
+    pbc[i,]$surv5 <- NA
+    pbc[i,]$surv10 <- NA
+  }
+  else {
+    score_df <- with(pbc,
+               data.frame(score1 = pbc[i,]$score1)
+  )
+  
+  fit.score <- survfit(survtest, newdata = score_df)
+
+  pbc[i,]$surv1 <- (fit.score$surv[22] + fit.score$surv[23])/2
+  pbc[i,]$surv5 <- (fit.score$surv[112] + fit.score$surv[113])/2
+  pbc[i,]$surv10 <- (fit.score$surv[224] + fit.score$surv[225])/2
+  }
+}
+
+View(pbc)
+```
+
+# ROC and AUC curves
+
+Lastly, we checked the ROC curves of our model at different times. In particular here we show the ROC curves after 1, 5 and 10 years, and we can see that we get an overall good AUC, with peaks as high as 93.3 for the ROC at 5 years.
+
+```{r}
+library(timeROC)
+library(ggDCA)
+library(rms)
+library(modelROC)
+```
+### Time-dependent AUC
+
+Here we show the Area Under the Curve computed over time:
+
+```{r}
+ROC<-timeROC(T=pbc_test$time,
+                      delta=pbc_test$status,marker=pbc_test$score1,
+                      cause=1,weighting="marginal",
+                      times= seq(0,15),
+                      iid=TRUE)
+
+plotAUCcurve(ROC, add = FALSE, conf.int = TRUE,
+                 conf.band = FALSE, col ="#80CBC4")
+
+
+```
+### ROC curves
+
+While here we show the ROC curve over time:
+
+```{r}
+plot(ROC, time = 1, col = '#80CBC4')
+plot(ROC, time = 5, col = '#80CBC4')
+plot(ROC, time = 10, col = '#80CBC4')
+
+```
+# Risk stratification 
+
+As said before, positive scores were found to be correlated with an increased risk of death, but in order to find a more precise interpretation of the single values associated to each individual, we decided to divide patients in three groups of risk such as Low, Medium and High, based on the values of the tertiles of the score variable, that are shown below the boxplots below. This cut-off allowed us to obtain three groups of equal size with almost 100 patients each, making them comparable in the further analysis. 
+
+## Identification of the tertiles
+
+```{r}
+quantile(pbc$time,probs=seq(0.2,0.8,0.1))
+```
+
+
+```{r}
+summary(pbc$score1)
+length(pbc[which(pbc$score1 < -0.7956069),]$score1)
+#length(pbc[which(pbc$score1 < 0.2377344),]$score1) 
+192-96
+length(pbc[which(pbc$score1 > 0.2377344),]$score1) 
+quantile(pbc$score1, probs = c(0.33, 0.66), na.rm = T)
+```
+## Identification of the groups of low, medium and high risk 
+
+We then divided the patients in three groups based on the tertiles
+
+```{r}
+pbc$risk <- cut(pbc$score1, breaks=c(-Inf, 0.8, 0.25, +Inf), labels=c("Low", "Medium", "High"))
+```
+
+and compared their distruibution with respect to the score: 
+
+```{r}
+boxplot(pbc$score1 ~ pbc$risk, col = '#80CBC4', ylab = 'Score', xlab = 'Risk Class' )
+```
+To validate this division, we compared the distribution of dead and alive patients in the three groups of risk. As we can see from the barplots, the higher the risk level, the higher the number of individuals who didn’t survive until the end of the study. In particular, we found that the majority of patients that were alive after the end of the study were given a low or medium score based on their variables recorded at the beginning of it, while the majority of patients who had an higher score didn’t survive eventually.  
+
+```{r}
+ggplot(na.omit(pbc), aes(factor(risk),
+        fill = factor(status))) +
+    geom_bar(position = "fill") + theme_minimal() + labs(title= "",
+      y= "Frequency of Survival Status", x ="Risk")  + scale_fill_manual(name = "Survival Status", labels =           c('Alive', 'Dead'), values= c("#80CBC4", "salmon")) + theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank()) 
+
+```
+# Application of the score in the clinical practice
+
+We now show how our score can be employed to get the probability of survival of each single patient, which we think might be its main application in clinical practice. Here we have the example of three patients that were given mean scores of the low, medium and high risk groups. It is noticeable a significant difference in survival: in fact, while the low-risk patient shows good chance of survival even after 10 years with a survival probability of 80%, the high risk patient has a survival probability of just 40% already at 5 years, while almost a null probability at 10. The medium group patient instead shows  good survival probabilities overall, but they seem to decrease very rapidly as years pass and therefore should probably be taken under control.
+
+```{r}
+pbc$years <- pbc$time
+
+survtest <- coxph(Surv(years, status) ~ score1, data = pbc)
+
+var <- -1.386735
+
+score_df <- with(pbc,
+               data.frame(score1 = var)
+)
+
+fit.score_l <- survfit(survtest, newdata = score_df)
+
+survtest <- coxph(Surv(years, status) ~ score1, data = pbc)
+
+var <- -0.3070199
+
+score_df <- with(pbc,
+               data.frame(score1 = var)
+)
+
+fit.score_m <- survfit(survtest, newdata = score_df)
+
+survtest <- coxph(Surv(years, status) ~ score1, data = pbc)
+
+var <- 1.651304
+
+score_df <- with(pbc,
+               data.frame(score1 = var)
+)
+
+fit.score_h <- survfit(survtest, newdata = score_df)
+
+fit <- list(Low = fit.score_l, Medium = fit.score_m, High = fit.score_h)
+ggsurvplot(fit, data = pbc, combine = T, conf.int = T, lwd=2, lty=1,
+     xlab='Time [years]', ylab='Survival Probability',
+     main='Estimated survival probability', palette = c("#80cbc4", 'skyblue2', 'salmon'), legend.labs = c('Low Score', 'Medium Score', 'High Score'), break.time.by = 1)
+```
+# Hypothesis testing
+
+We then tested if different levels of risk showed a significant difference of known markers of primary biliary colangitis that were not included in the model, in order to check if their behaviour was in accordance to our score. To do so, we employed a Mann-Whitney U test to analyze continuous variables and the chi-squared test for association to analyze the dichotomous ones in a pair-wise comparison of the three groups, and we found as a general trend that the markers showed higher values as the risk of patients increased. 
+In particular, we can see that the difference of dead and alive patients in the three groups that we showed before is actually statistically significant, and we also found that an increase of age is associated to an increase in risk. It is also important to point out that higher risk groups tend to have more male patients, which we know by literature to have lower survival compared to women. 
+
+```{r}
+pbc$sex <- ifelse(pbc$sex == 'm', 0, 1)
+
+score_l <- pbc[which(pbc$risk == 'Low'),]
+                     
+score_m <- pbc[which(pbc$risk == 'Medium'),]
+                     
+score_h <- pbc[which(pbc$risk == 'High'),]
+```
+
+```{r}
+library(BSDA)
+
+names <- NA
+for(i in 1:length(colnames(pbc))) {
+  if(class(pbc[[i]]) != 'factor') {
+    names <- c(names, colnames(pbc)[i])
+  }
+}
+
+names <- names[3:20]
+names
+names <- c('status', 'age', 'sex', 'ascites', 'hepato', 'edema', 'chol', 'alk.phos', 'ast', 'platelet', 'protime')
+```
+
+## low vs medium
+
+```{r}
+score_l_m_hp <- matrix(NA, 2, length(names))
+rownames(score_l_m_hp) <- c('low', 'medium')
+colnames(score_l_m_hp) <- names
+
+ for(i in names) {print(i)
+     test <- wilcox.test(score_l[[i]], score_m[[i]], paired = F)
+     if(test$p.value > 0.05) {
+       score_l_m_hp[1, i] <- 'EQUAL'
+       score_l_m_hp[2, i] <- 'EQUAL'
+     }
+     else {
+       test <- wilcox.test(score_l[[i]], score_m[[i]], paired = F, alternative = 'greater')
+       if(test$p.value > 0.05) {
+         score_l_m_hp[1, i] <- 'Lower'
+         score_l_m_hp[2, i] <- 'Higher'
+       }
+       else {
+         score_l_m_hp[1, i] <- 'Higher'
+         score_l_m_hp[2, i] <- 'Lower'
+       }
+     }
+   }
+ 
+
+score_l_m_hp
+```
+
+## low vs high
+
+```{r}
+score_l_h_hp <- matrix(NA, 2, length(names))
+rownames(score_l_h_hp) <- c('low', 'high')
+colnames(score_l_h_hp) <- names
+
+ for(i in names) {
+     test <- wilcox.test(score_l[[i]], score_h[[i]], paired = F)
+     if(test$p.value > 0.05) {
+       score_l_h_hp[1, i] <- 'EQUAL'
+       score_l_h_hp[2, i] <- 'EQUAL'
+     }
+     else {
+       test <- wilcox.test(score_l[[i]], score_h[[i]], piared = F, alternative = 'greater')
+       if(test$p.value > 0.05) {
+         score_l_h_hp[1, i] <- 'Lower'
+         score_l_h_hp[2, i] <- 'Higher'
+       }
+       else {
+         score_l_h_hp[1, i] <- 'Higher'
+         score_l_h_hp[2, i] <- 'Lower'
+       }
+     }
+   }
+ 
+
+score_l_h_hp
+```
+
+
+## medium vs high
+
+```{r}
+score_m_h_hp <- matrix(NA, 2, length(names))
+rownames(score_m_h_hp) <- c('medium', 'high')
+colnames(score_m_h_hp) <- names
+
+ for(i in names) {
+     test <- wilcox.test(score_m[[i]], score_h[[i]], paired = F)
+     if(test$p.value > 0.05) {
+       score_m_h_hp[1, i] <- 'EQUAL'
+       score_m_h_hp[2, i] <- 'EQUAL'
+     }
+     else {
+       test <- wilcox.test(score_m[[i]], score_h[[i]], paired = F, alternative = 'greater')
+       if(test$p.value > 0.05) {
+         score_m_h_hp[1, i] <- 'Lower'
+         score_m_h_hp[2, i] <- 'Higher'
+       }
+       else {
+         score_m_h_hp[1, i] <- 'Higher'
+         score_m_h_hp[2, i] <- 'Lower'
+       }
+     }
+   }
+ 
+
+score_m_h_hp
+
+```
+
+# Comparison with existing scores 
+
+We also compared our score to the ones present in literature to check if their performance was coherent with our results.
+We did so by applying all of them to our dataset and we we compared the results per patient with our score via the non parametric Spearman correlation and therefore check if our score correlates with the others. 
+
+In particular it is noticeable the good correlation with the Mayo scores- all calculated starting from our same dataset, but the best correlation is with the GLOBE score .
+The High correlation with GLOBE is particularly interesting because is comprises age, bilirubin, albumin, alkaline phosphatase, and platelet count, and our score only comprises bilirubin and albumin of those. 
+The ALBI score on the other hand only considers bilirubin and albumin and is more of a general liver-dysfunction scorer.
+The Newcastle scorer is the one that correlates the less since it is a scorer for the risk of developing  Gastro-oesophageal varices during the first stages of the sickness. 
+
+```{r}
+cor.test(pbc_test$score1, pbc_test$ALBI)
+cor.test(pbc_test$score1, pbc_test$mayo89)
+cor.test(pbc_test$score1, pbc_test$mayo94)
+cor.test(pbc_test$score1, pbc_test$newcastle)
+cor.test(pbc_test$score1, pbc_test$globe)
+```
+
+```{r}
+# ROC curves to compare score performances
+
+ROC.bili<-timeROC(T=pbc_test$time,
+                      delta=pbc_test$status,marker=pbc_test$score1,
+                      cause=1,weighting="marginal",
+                      times= seq(0,15),
+                      iid=TRUE)
+
+ROC.albi<-timeROC(T=pbc_test$time,
+                      delta=pbc_test$status,marker=pbc_test$ALBI,
+                      cause=1,weighting="marginal",
+                      times= seq(0,15),
+                      iid=TRUE)
+
+ROC.mayo89<-timeROC(T=pbc_test$time,
+                      delta=pbc_test$status,marker=pbc_test$mayo89,
+                      cause=1,weighting="marginal",
+                      times= seq(0,15),
+                      iid=TRUE)
+
+ROC.mayo94<-timeROC(T=pbc_test$time,
+                      delta=pbc_test$status,marker=pbc_test$mayo94,
+                      cause=1,weighting="marginal",
+                      times= seq(0,15),
+                      iid=TRUE)
+
+
+ROC.newcastle<-timeROC(T=pbc_test$time,
+                      delta=pbc_test$status,marker=pbc_test$newcastle,
+                      cause=1,weighting="marginal",
+                      times= seq(0,15),
+                      iid=TRUE)
+
+ROC.globe<-timeROC(T=pbc_test$time,
+                      delta=pbc_test$status,marker=pbc_test$globe,
+                      cause=1,weighting="marginal",
+                      times= seq(0,15),
+                      iid=TRUE)
+
+plotAUCcurve(ROC.bili, add = FALSE, conf.int = FALSE,
+                 conf.band = FALSE, col ="#80CBC4")
+plotAUCcurve(ROC.albi, add = TRUE, conf.int = FALSE,
+                 conf.band = FALSE, col ="#0d47a1")
+plotAUCcurve(ROC.mayo89, add = TRUE, conf.int = FALSE,
+                 conf.band = FALSE, col ="#970062")
+plotAUCcurve(ROC.mayo94, add = TRUE, conf.int = FALSE,
+                 conf.band = FALSE, col ="#fdd835")
+plotAUCcurve(ROC.newcastle, add = TRUE, conf.int = FALSE,
+                 conf.band = FALSE, col ="#e9944b")
+plotAUCcurve(ROC.globe, add = TRUE, conf.int = FALSE,
+                 conf.band = FALSE, col ="#de425b")
+legend("bottomleft",c("Our score (0.892, 0.03)","ALBI score (0.888, 0.04)", "Mayo 89 score (0.885, 0.07)", "Mayo 94 score (0.890, 0.06)", "Newcastle score (0.789, 0.10)", "GLOBE score (0.856, 0.07)"),col=c("#80CBC4","#0d47a1","#970062", "#fdd835", "#e9944b","#de425b"),pch = 19, cex = 0.9)
+
+plot(ROC.bili, time = 1, col = '#80CBC4', lwd=2.5, title = FALSE)
+plot(ROC.bili, time = 5, col = '#545479', lwd=2.5, add=TRUE, title = FALSE)
+plot(ROC.bili, time = 10, col = '#c43e00', lwd=2.5, add=TRUE, title = FALSE)
+title("ROC curves")
+legend("bottomright",c("t = 1 (AUC = 90.7)","t = 5 (AUC = 93.3)", "t = 10 (AUC = 88.5)"),col=c("#80CBC4","#545479","#c43e00"),pch = 19)
+```
+
+
+
+
+
