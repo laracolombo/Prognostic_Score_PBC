@@ -1,0 +1,120 @@
+---
+title: "One thousand iterations"
+authors: "Michele Rossi, Lara Colombo, Erik Bot, Sabrina Sartori"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(survival)
+library(survminer)
+library(tibble)
+```
+
+Loading the dataset: 
+
+```{r}
+pbc <- read.csv('pbc_definitivo.csv')
+
+
+pbc$X <- NULL
+pbc$APRI <- NULL
+pbc$ALBI <- NULL
+
+colnames(pbc)
+```
+
+Divide the dataset between dead and alive patients:
+```{r}
+library(pec)
+pbc_dead <- pbc[which(pbc$status == 1),]
+pbc_alive <- pbc[which(pbc$status == 0),]
+out <- c()
+```
+
+Perform 1k splits with diffent seeds to selects variables in the Cox regression model. The  selected variables is saves in the vector out for a count:
+```{r}
+for (i in seq(1, 1000, by=1))
+{
+set.seed(i)
+
+split_dead <- sample(c(rep(0, 0.7 * nrow(pbc_dead)), rep(1, 0.3 * nrow(pbc_dead))))
+split_alive <- sample(c(rep(0, 0.7 * nrow(pbc_alive)), rep(1, 0.3 * nrow(pbc_alive))))
+
+pbc_train_dead <- pbc_dead[split_dead == 0,]
+pbc_test_dead <- pbc_dead[split_dead == 1,]
+pbc_train_alive <- pbc_alive[split_alive == 0,]
+pbc_test_alive <- pbc_alive[split_alive == 1,]
+
+pbc_train <- rbind(pbc_train_dead, pbc_train_alive)
+pbc_test <- rbind(pbc_test_dead, pbc_test_alive)
+
+f <- selectCox(Surv(time, status) ~ trt + age + sex + ascites + hepato + spiders + edema + bili + chol + albumin + copper + alk.phos + ast + trig + platelet + protime + stage + diuretic, data = pbc_train, rule = 'aic')
+
+out <- c(out,f$In)
+}
+```
+
+Perform the count of the previous output and organise the table:
+```{r}
+tavola <-as.data.frame.matrix(cbind(table(out)))
+row.names(tavola)[row.names(tavola) == "age"] <- "Age"
+row.names(tavola)[row.names(tavola) == "albumin"] <- "Albumin"
+row.names(tavola)[row.names(tavola) == "alk.phos"] <- "Alk Phosphotase"
+row.names(tavola)[row.names(tavola) == "ascites"] <- "Ascites"
+row.names(tavola)[row.names(tavola) == "ast"] <- "Ast"
+row.names(tavola)[row.names(tavola) == "bili"] <- "Bilirubin"
+row.names(tavola)[row.names(tavola) == "chol"] <- "Cholesterol"
+row.names(tavola)[row.names(tavola) == "copper"] <- "Copper"
+row.names(tavola)[row.names(tavola) == "diuretic"] <- "Diuretic"
+row.names(tavola)[row.names(tavola) == "edema"] <- "Edema"
+row.names(tavola)[row.names(tavola) == "hepato"] <- "Hepatomegaly"
+row.names(tavola)[row.names(tavola) == "platelet"] <- "Platelet Count"
+row.names(tavola)[row.names(tavola) == "protime"] <- "Blood Clotting Time"
+row.names(tavola)[row.names(tavola) == "sex"] <- "Sex"
+row.names(tavola)[row.names(tavola) == "spiders"] <- "Spiders"
+row.names(tavola)[row.names(tavola) == "stage"] <- "Stage"
+row.names(tavola)[row.names(tavola) == "trig"] <- "Triglycerides"
+row.names(tavola)[row.names(tavola) == "trt"] <- "Treatment"
+
+
+tavola$names <- rownames(tavola)
+
+tavola
+```
+
+
+Wordcloud Plot
+
+```{r}
+#install.packages("wordcloud2")
+library("wordcloud")
+
+dev.new(width = 10000, height = 10000, unit = "px")
+
+g<- wordcloud(words = tavola$names, freq = tavola$V1,
+          max.words=length(out), random.order=FALSE
+          ,scale=c(4,.5), rot.per=0, 
+          colors=brewer.pal(8, "BrBG"))
+g
+
+```
+
+Barplot
+
+```{r}
+tavola2 <- tavola                                                
+tavola2$names <- factor(tavola2$names,                      
+                  levels = tavola2$names[order(tavola2$V1, decreasing = FALSE)])
+
+
+ggplot(tavola2, aes(x= V1, y=names)) + geom_bar(stat = 'identity', fill="#69b3a2", color="#e9ecef", alpha=0.9)+
+  theme(
+    plot.title = element_text(size=15)
+  ) +  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))  + theme(axis.title.x = element_blank()) + theme(axis.title.y = element_blank()) + theme(aspect.ratio = 1) +
+geom_vline(xintercept=500, linetype="dashed", 
+              color = "black", size=0.3)
+```
