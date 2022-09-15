@@ -1,5 +1,5 @@
 # Modeling transplant-free survival in PBC patients
-This analysis was part of a Biostatistic project that was carried in collaboration with @ErikBot9, @Ragescripter and Sabrina Sartori. 
+This analysis was part of a Biostatistic project that was carried by @laracolombo, @ErikBot9, @Ragescripter and Sabrina Sartori. 
 
 The aim of our study was to develop a score to predict transplant-free survival in PBC patients.
 
